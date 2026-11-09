@@ -37,7 +37,6 @@ python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-The clone URL is the proposed repository location, pending owner approval.
 For GPU execution, install compatible CUDA PyTorch wheels instead of CPU
 wheels before installing requirements. The pins reflect the local development
 environment; a new dependency installation has not been validated in a clean
@@ -97,6 +96,9 @@ app/demo/       English upload and live interfaces
 tests/          public tests using synthetic inputs and model stubs
 ```
 
+For reviewed public-source acquisition, see [Public data](docs/PUBLIC_DATA.md).
+The importer saves images locally in quarantine without admitting them to training.
+
 Historical training scripts, private annotations, experiments, and deployment
 notes remain in the owner's local workspace. They are not part of this public
 source snapshot. No real plate image or capture is supplied as an example.
@@ -105,13 +107,13 @@ source snapshot. No real plate image or capture is supplied as an example.
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python -m pytest tests -q
+python -m pytest -q
 ```
 
 Most tests use synthetic arrays/images and stub models. Checkpoint-specific
 tests skip when the optional historical checkpoint is absent. Unit tests do
-not establish real-camera OCR accuracy. The proposed GitHub Actions workflow
-runs CPU tests; its remote execution has not yet been verified.
+not establish real-camera OCR accuracy. The GitHub Actions workflow runs CPU
+tests; local tests and remote CI are separate evidence.
 
 ## Limits and next work
 
