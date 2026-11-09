@@ -1,0 +1,97 @@
+# ============================================================================
+# ANPR System V1 - .gitignore
+# ----------------------------------------------------------------------------
+# Purpose: keep raw data, secrets, caches and large/binary model weights out of
+# version control. Text evidence (CSV/JSON/MD/TXT/JSONL) under logs/ IS kept.
+#
+# IMPORTANT: data/raw/ is immutable project evidence (7,191 files) and must
+# NEVER be committed or rewritten. The same applies to trained weights - they
+# are large binaries and are backed up separately.
+# ============================================================================
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Test / tool caches ----------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# --- Virtual environments --------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# --- Secrets / local environment (never commit real values) ----------------
+.env
+.env.*
+!.env.example
+
+# --- OS / editor -----------------------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Model weights (large binaries; back up separately) --------------------
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.safetensors
+/models/**/weights/
+/yolov8n.pt
+/weights/
+
+# --- Raw + bulky datasets (never commit raw data) --------------------------
+data/raw/
+data/processed/
+data/reviewed/
+data/prepared/*/images/
+
+# --- EasyOCR model cache (normally lives in the user profile) --------------
+.EasyOCR/
+
+# --- Large/binary log artifacts --------------------------------------------
+# Keep text evidence (CSV/JSON/MD/TXT/JSONL); drop rendered images.
+logs/**/*.png
+logs/**/*.jpg
+logs/**/*.jpeg
+logs/**/*.gif
+logs/**/*.cache
+
+# Public release boundary. Historical tracked files still exist in Git history;
+# publish only the reviewed clean export, never this legacy repository history.
+/data/
+/logs/
+/models/
+/publication/
+/scripts/
+/.agents/
+/AI_DEVELOPMENT_PLAN.md
+/PROJECT_PROGRESS.md
+/CAMERA_INTEGRATION.md
+/COMPANY_DEMO.md
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json

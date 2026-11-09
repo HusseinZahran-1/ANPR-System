@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jordan ANPR | Live Camera</title>
+  <style>
+    :root{color-scheme:dark;--bg:#07131b;--card:#10212a;--line:#25404a;--text:#f3f7f4;--muted:#a9bdc2;--accent:#58dbc1;--amber:#ffca75;--red:#ff8d87}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#174d55 0,transparent 42%),var(--bg);color:var(--text);font-family:"Segoe UI",Tahoma,Arial,sans-serif;min-height:100vh}
+    main{max-width:1200px;margin:auto;padding:28px 22px 60px}a{color:var(--accent)}.top{display:flex;justify-content:space-between;align-items:center;gap:15px;color:var(--accent);font-weight:700;letter-spacing:.03em}h1{font-size:clamp(28px,4vw,44px);margin:26px 0 8px}p{color:var(--muted);line-height:1.6}.intro{max-width:760px;margin:0 0 24px}.grid{display:grid;grid-template-columns:1.4fr .85fr;gap:18px}.card{background:rgba(16,33,42,.95);border:1px solid var(--line);border-radius:18px;padding:20px;min-width:0;margin-bottom:18px}.card h2{font-size:19px;margin:0 0 15px}.row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.field{flex:1;min-width:220px}label{display:block;color:var(--muted);font-size:13px;margin:0 0 7px}input,select{width:100%;background:#071a21;color:var(--text);border:1px solid #3d626a;border-radius:9px;padding:11px;font:inherit}input[type=file]{padding:9px}input[type=checkbox]{width:auto;margin:0}.inline{display:flex;align-items:center;gap:8px;margin:10px 0}.endpoint{font:13px Consolas,monospace}button{border:0;border-radius:9px;background:var(--accent);color:#09241e;padding:11px 16px;font-size:14px;font-weight:800;cursor:pointer}button.secondary{background:#24454a;color:var(--text)}button:disabled{opacity:.45;cursor:not-allowed}.hint{color:var(--muted);font-size:13px;margin-top:10px}.status{font-size:13px;font-weight:700;color:var(--amber)}.status.connected{color:var(--accent)}.status.error{color:var(--red)}.image{border-radius:12px;overflow:hidden;background:#08151b;min-height:260px;display:grid;place-items:center}.image canvas{display:block;width:100%;height:auto}.placeholder{color:var(--muted);padding:40px;text-align:center}.num{font:800 34px Consolas,monospace;letter-spacing:.05em;margin:5px 0 14px}.pill{display:inline-block;background:#403122;color:var(--amber);padding:6px 9px;border-radius:7px;font-size:12px;font-weight:700}.detail{color:var(--muted);font-size:13px;line-height:1.8}.history{display:grid;gap:8px;max-height:350px;overflow:auto}.event{width:100%;text-align:left;background:#0b1c24;border:1px solid var(--line);color:var(--text);font-weight:400}.event strong{display:block;font:700 18px Consolas,monospace;margin:3px 0}.event small{color:var(--muted)}.note{border-left:3px solid var(--amber);background:#2b2922;border-radius:6px;padding:12px 14px;color:var(--muted);font-size:13px}.controls{display:grid;gap:14px}.review{display:grid;gap:11px}.setup-grid{display:grid;grid-template-columns:180px 1fr;gap:7px 16px;align-items:start}.setup-grid strong{color:var(--muted);font-size:13px}.setup-grid span{overflow-wrap:anywhere;font:14px Consolas,monospace}.footer{color:var(--muted);font-size:12px;margin-top:24px}@media(max-width:850px){.grid{grid-template-columns:1fr}main{padding:22px 14px}.setup-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="top"><span>▣ JORDAN ANPR · LIVE CAMERA</span><a href="/demo">Single-image demo</a></div>
+  <h1>Watch camera captures as they arrive</h1>
+  <p class="intro">Give the camera developer the upload endpoint below. Each capture is analyzed automatically and appears here when processing finishes.</p>
+  <div class="card controls">
+    <div class="row"><div class="field"><label for="endpoint">Camera upload API URL</label><input class="endpoint" id="endpoint" readonly></div><button class="secondary" id="copy">Copy URL</button></div>
+    <div class="row"><div class="field"><label for="key">Camera API key (from the local .env file)</label><input id="key" type="password" autocomplete="off" placeholder="Paste CAMERA_API_KEY"></div><button id="connect">Start live view</button><button class="secondary" id="disconnect" disabled>Stop</button></div>
+    <div class="row"><div class="field"><label for="sample">Try the camera flow with a JPG or PNG</label><input id="sample" type="file" accept="image/jpeg,image/png"></div><button class="secondary" id="send">Send test capture</button></div>
+    <div id="state" class="status" role="status" aria-live="polite">Enter the API key to start.</div>
+  </div>
+  <div class="card"><h2>Direct ISAPI2 camera setup</h2><p class="hint">Use this when the camera sends pictures directly to this computer. Enter the key above, then reveal the exact values for the camera configuration screen.</p><div class="row"><button class="secondary" id="showIsapi">Show camera settings</button><button class="secondary" id="copyIsapi" disabled>Copy Host URL</button><button class="secondary" id="checkIsapi">Check last camera packet</button></div><div id="isapiSettings" class="setup-grid hint" style="margin-top:14px">The Host URL contains a secret token. Share it only with the camera developer.</div><div id="isapiPacket" class="hint" aria-live="polite"></div></div>
+  <div class="grid">
+    <section>
+      <div class="card"><h2>Latest capture</h2><div class="image" id="imageBox"><div class="placeholder">Waiting for a camera image…</div></div></div>
+      <div class="note">All readings require visual review. A Jordanian text format match does not verify the plate's country.</div>
+    </section>
+    <aside>
+      <div class="card"><h2>Analysis</h2><div id="analysis" class="detail">No capture received yet.</div></div>
+      <div class="card"><h2>Review this capture</h2><p class="hint">Optional: save an image only after checking the plate yourself. Reviews stay out of training until audited.</p>
+        <div class="image" id="reviewImageBox" style="min-height:130px"><div class="placeholder">Select a capture for review.</div></div><div id="reviewTarget" class="hint">No review target selected.</div><button class="secondary" id="reviewLatest" type="button" style="margin:10px 0">Discard edits &amp; review latest</button>
+        <form id="reviewForm" class="review">
+          <div><label for="reviewer">Reviewer ID</label><input id="reviewer" maxlength="64" placeholder="e.g. operator-1" required></div>
+          <label class="inline"><input id="platePresent" type="checkbox"> A plate is visible</label>
+          <label class="inline"><input id="plateReadable" type="checkbox"> Its text is readable</label>
+          <div><label for="correctedText">Text read from the image (leave blank if unreadable)</label><input id="correctedText" maxlength="64" autocomplete="off" placeholder="Type what you see"></div>
+          <div><label for="country">Country seen on the plate</label><select id="country"><option value="UNKNOWN">Unknown</option><option value="JORDAN">Jordan</option><option value="FOREIGN">Foreign</option></select></div>
+          <label class="inline"><input id="confirmed" type="checkbox"> I checked the image itself before saving</label>
+          <button id="saveReview" type="submit" disabled>Save reviewed sample</button><div id="reviewStatus" class="hint" role="status" aria-live="polite">Select a capture first.</div>
+        </form>
+      </div>
+      <div class="card"><h2>Recent captures</h2><div id="history" class="history"><span class="hint">The latest 10 captures appear here.</span></div></div>
+    </aside>
+  </div>
+  <div class="footer">New camera images and analysis logs are saved in data/processed/camera_inbox. The recent-capture display holds the latest 10 events and restores saved captures after restart. Saved images and model readings are unverified and do not enter training automatically.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id),endpoint=$('endpoint'),key=$('key'),state=$('state'),imageBox=$('imageBox'),reviewImageBox=$('reviewImageBox'),analysis=$('analysis'),history=$('history');
+endpoint.value=new URL('/camera/events',location.href).href;
+let timer=null,lastSeenNewestId=null,selectedEvent=null,displayedEvent=null,displayedImage=null,reviewDirty=false,busy=false;
+let isapiSetup=null;
+function setState(message,kind=''){state.textContent=message;state.className='status '+kind;}
+function headers(){return {'X-Camera-Key':key.value.trim()};}
+async function jsonResponse(response){const data=await response.json().catch(()=>({}));if(!response.ok){const error=Error(data.detail||`Request failed (${response.status})`);error.status=response.status;throw error}return data;}
+function plateText(event){return event.result?.ocr_results?.[0]?.text||'Unreadable';}
+function addText(parent,tag,value,className){const element=document.createElement(tag);element.textContent=value;if(className)element.className=className;parent.appendChild(element);return element;}
+function showAnalysis(event){analysis.replaceChildren();addText(analysis,'div',plateText(event),'num');const d=event.result?.decisions?.[0];addText(analysis,'div',d?.decision==='ACCEPT_JORDANIAN'?'Jordanian format match · verify country':'Needs review','pill');const suggestion=event.result?.ocr_results?.[0]?.possible_authority_text;if(suggestion)addText(analysis,'div',`Possible authority code: ${suggestion} · check the image before confirming.`,'detail');const det=event.result?.detections?.[0];addText(analysis,'div',`Camera: ${event.camera_id}`,'detail');addText(analysis,'div',`Captured: ${new Date(event.captured_at).toLocaleString()}`,'detail');addText(analysis,'div',`Detector signal: ${det?Math.round(det.det_conf*100)+'%':'No plate found'}`,'detail');const extra=Math.max(0,(event.result?.meta?.detector_candidate_count||0)-(event.result?.detections?.length||0));if(extra)addText(analysis,'div',`${extra} additional candidate${extra===1?'':'s'} excluded by single-plate mode.`,'detail');addText(analysis,'div','Human review required before use.','detail');}
+function selectReview(event,img){
+  selectedEvent=event;reviewDirty=false;
+  const preview=document.createElement('canvas');preview.width=img.naturalWidth;preview.height=img.naturalHeight;
+  preview.getContext('2d').drawImage(img,0,0);reviewImageBox.replaceChildren(preview);
+  $('reviewTarget').textContent=`Review target: ${new Date(event.captured_at).toLocaleString()} · ${event.camera_id}`;
+  $('platePresent').checked=false;$('plateReadable').checked=false;$('correctedText').value='';$('country').value='UNKNOWN';$('confirmed').checked=false;
+  $('saveReview').disabled=false;$('reviewStatus').textContent='Review the target image above before saving.';
+}
+async function showEvent(event){
+  const response=await fetch(`/camera/events/${encodeURIComponent(event.id)}/image`,{headers:headers(),cache:'no-store'});
+  if(!response.ok)throw Error(`Image unavailable (${response.status})`);
+  const url=URL.createObjectURL(await response.blob());
+  try{
+    const img=await new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(Error('Could not display the capture.'));image.src=url});
+    const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
+    const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);const scale=Math.max(2,canvas.width/650);ctx.lineWidth=3*scale;ctx.strokeStyle='#58dbc1';
+    for(const det of event.result?.detections||[]){const [x1,y1,x2,y2]=det.box;ctx.strokeRect(x1,y1,x2-x1,y2-y1)}
+    imageBox.replaceChildren(canvas);showAnalysis(event);displayedEvent=event;displayedImage=img;
+    if(!reviewDirty||!selectedEvent)selectReview(event,img);
+    else $('reviewStatus').textContent='Your earlier review is preserved above while new captures update on the left.';
+  }finally{URL.revokeObjectURL(url)}
+}
+function renderHistory(events){history.replaceChildren();if(!events.length){addText(history,'span','Waiting for a camera capture…','hint');return}for(const event of events){const button=document.createElement('button');button.className='event';addText(button,'small',`${event.camera_id} · ${new Date(event.captured_at).toLocaleTimeString()}`);addText(button,'strong',plateText(event));button.onclick=()=>showEvent(event).catch(error=>setState(error.message,'error'));history.appendChild(button)}}
+async function poll(){if(busy||!key.value.trim())return;busy=true;try{const data=await jsonResponse(await fetch('/camera/events?limit=10',{headers:headers(),cache:'no-store'}));const events=data.events||[];renderHistory(events);if(events.length&&events[0].id!==lastSeenNewestId){await showEvent(events[0]);lastSeenNewestId=events[0].id}setState(events.length?'Live · latest capture received':'Live · waiting for captures','connected')}catch(error){if(error.status===401){setState('Invalid camera API key. Enter the current key and start again.','error');stop()}else setState('Connection lost · retrying automatically: '+error.message,'error')}finally{busy=false}}
+function stop(){if(timer){clearInterval(timer);timer=null}$('connect').disabled=false;$('disconnect').disabled=true}
+$('connect').onclick=()=>{if(!key.value.trim()){setState('Enter the camera API key first.','error');return}stop();$('connect').disabled=true;$('disconnect').disabled=false;poll();timer=setInterval(poll,2000)};
+$('disconnect').onclick=()=>{stop();setState('Live view stopped.')};
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(endpoint.value);setState('Camera upload URL copied.')}catch{endpoint.select();setState('Select and copy the camera upload URL.')}};
+$('showIsapi').onclick=async()=>{if(!key.value.trim()){setState('Enter the camera API key first.','error');return}try{isapiSetup=await jsonResponse(await fetch('/camera/isapi2/config',{headers:headers(),cache:'no-store'}));const box=$('isapiSettings');box.replaceChildren();for(const [label,value] of [['Version',isapiSetup.version],['Host IP Address',isapiSetup.host_ip||'Check this computer’s LAN IP'],['Host Port',isapiSetup.host_port],['Host URL',isapiSetup.host_url],['Heartbeat Interval',`${isapiSetup.heartbeat_interval_s} s`],['Uploaded Picture Type',isapiSetup.uploaded_picture_type],['Authentication Mode',isapiSetup.authentication_mode],['Platform Response Verification',isapiSetup.platform_response_verification?'On':'Off']]){addText(box,'strong',label);addText(box,'span',value)}$('copyIsapi').disabled=false;setState('Camera settings loaded. Keep the Host URL private.','connected')}catch(error){setState(error.message,'error')}};
+$('copyIsapi').onclick=async()=>{if(!isapiSetup)return;try{await navigator.clipboard.writeText(isapiSetup.host_url);setState('ISAPI2 Host URL copied.','connected')}catch{setState('Copy the Host URL shown above.','error')}};
+$('checkIsapi').onclick=async()=>{if(!key.value.trim()){setState('Enter the camera API key first.','error');return}try{const data=await jsonResponse(await fetch('/camera/isapi2/status/last',{headers:headers(),cache:'no-store'}));$('isapiPacket').textContent=data.received_at?`Last packet: ${new Date(data.received_at).toLocaleString()} · ${data.bytes} bytes · ${data.image_selected?'image found':'no image'} · ${(data.parts||[]).map(part=>part.name+' ('+part.bytes+' bytes)').join(', ')}`:'No ISAPI2 packet received since server start.'}catch(error){setState(error.message,'error')}};
+$('send').onclick=async()=>{const file=$('sample').files[0];if(!key.value.trim()||!file){setState('Choose an image and enter the API key.','error');return}if(!['image/jpeg','image/png'].includes(file.type)||file.size>10*1024*1024){setState('Choose a JPG or PNG under 10 MB.','error');return}const form=new FormData();form.append('file',file);form.append('camera_id','manual-test');$('send').disabled=true;setState('Analyzing test capture…');try{await jsonResponse(await fetch('/camera/events',{method:'POST',headers:headers(),body:form}));await poll();setState('Test capture analyzed.','connected')}catch(error){setState(error.message,'error')}finally{$('send').disabled=false}};
+$('reviewForm').addEventListener('input',event=>{if(event.target.id!=='reviewer')reviewDirty=true});
+$('reviewLatest').onclick=()=>{if(!displayedEvent||!displayedImage)return;selectReview(displayedEvent,displayedImage)};
+$('platePresent').onchange=()=>{reviewDirty=true;if(!$('platePresent').checked){$('plateReadable').checked=false;$('correctedText').value='';$('country').value='UNKNOWN'}};
+$('plateReadable').onchange=()=>{reviewDirty=true;if($('plateReadable').checked)$('platePresent').checked=true;else $('correctedText').value=''};
+$('reviewForm').onsubmit=async event=>{event.preventDefault();if(!selectedEvent||!key.value.trim()){$('reviewStatus').textContent='Select a capture and enter the API key.';return}const payload={reviewer:$('reviewer').value,plate_present:$('platePresent').checked,plate_readable:$('plateReadable').checked,corrected_text:$('correctedText').value,country:$('country').value,confirmed_from_pixels:$('confirmed').checked};$('saveReview').disabled=true;$('reviewStatus').textContent='Saving reviewed sample…';try{await jsonResponse(await fetch(`/camera/events/${encodeURIComponent(selectedEvent.id)}/review`,{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify(payload)}));$('reviewStatus').textContent='Saved for dataset audit. It is not in model training.';reviewDirty=false}catch(error){$('reviewStatus').textContent=error.message;$('saveReview').disabled=false}};
+</script>
+</body>
+</html>
