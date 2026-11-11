@@ -10,7 +10,7 @@ does not establish the plate's country or authorize an access decision.
 
 - YOLO plate detection and CRNN/CTC OCR, with separate confidence signals.
 - Crop preprocessing, layout handling, and Jordanian text validation.
-- Review suggestions for ambiguous CD/SN authority prefixes.
+- Optional visual CD/SN region reading with separate evidence and mandatory review.
 - FastAPI JPEG/PNG upload endpoint and an English browser demo.
 - Authenticated camera uploads and direct ISAPI2 multipart image ingestion.
 - Live browser polling, durable local image archive, and quarantined reviews.
@@ -134,3 +134,10 @@ A project license has not been selected. Public visibility does not grant a
 general license to reuse the code. Review third-party dependency and model
 licenses, including Ultralytics and OCR architecture provenance, before release
 or redistribution. Model weights and datasets require a separate rights review.
+
+## Visual authority reader
+
+See [optional CD/SN region OCR](docs/AUTHORITY_REGION_OCR.md) for setup, measured
+development results and limitations. Manual demo uploads use `/demo/predict`,
+which shares the configured camera detector; general `/predict` keeps its own
+detector configuration. Start the local MVP manually with `./run_mvp.ps1`.

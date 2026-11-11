@@ -1,7 +1,8 @@
 """Phase 11 - End-to-End plate pipeline (detector -> OCR -> validator -> policy).
 
 Wires together the frozen artifacts of earlier phases, using **saved models
-only** (no training, no fine-tuning, no new dependency):
+only** (no runtime training or fine-tuning). An optional, separately installed
+English prefix reader supports visual CD/SN evidence:
 
     full scene image
       -> YOLOv8n detector           (models/phase6_detector/.../weights/best.pt)
@@ -17,7 +18,8 @@ The CRNN architecture and the greedy CTC decoder live in the application layer
 so the inference path is the same model Phase 8 trained and evaluated, while the
 pipeline no longer imports training code through ``sys.path`` manipulation. The
 detector is accessed through :class:`app.detector.PlateDetector`. Only ``best.pt``
-is used for both models (single-baseline discipline, owner-approved).
+is used for the detector and primary OCR; optional prefix weights are verified
+separately. Region readings retain their original OCR evidence and require review.
 
 Confidence handling (DESIGN section D): three separate values are exposed and
 **never fused** -- detector confidence, OCR confidence, and the rule-based
@@ -46,6 +48,8 @@ from app.ocr.layout import SUPPORTED_LAYOUTS, prepare_layout
 from app.detector import DEFAULT_CONF, DEFAULT_IOU, PlateDetector
 from app.ocr import conv_out_width, greedy_decode, load_crnn_checkpoint
 from app.ocr.authority_review import possible_authority_text
+from app.ocr.authority_regions import AuthorityRegionReader,load_prefix_reader
+from app.ocr.spatial import vgg_ctc_tokens
 from app.pipeline.io import (
     crop_from_box,
     load_scene,
@@ -146,7 +150,9 @@ class Pipeline:
                  det_conf: float = DEFAULT_CONF, imgsz: int = DEFAULT_IMGSZ,
                  nms_iou: float = DEFAULT_IOU, device=None,
                  crop_pad_pct: float = 0.0, layout_mode: str | None = None,
-                 max_plates: int | None = None):
+                 max_plates: int | None = None,
+                 authority_model_path: str | Path | None = None,
+                 authority_min_prefix_confidence: float = .8):
         torch.manual_seed(SEED)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
@@ -180,6 +186,11 @@ class Pipeline:
         self.device = loaded["device"]
         self.detector_path = str(Path(detector_path))
         self.ocr_path = str(Path(ocr_path))
+        self.authority_reader = None
+        if authority_model_path is not None:
+            prefix_reader = load_prefix_reader(str(Path(authority_model_path).resolve()),str(self.device))
+            self.authority_reader = AuthorityRegionReader(prefix_reader,self._ocr_spatial_tokens,
+                                                          min_prefix_confidence=authority_min_prefix_confidence)
 
     # ------------------------------------------------------------------ #
     def _detect(self, image_path) -> list[dict]:
@@ -210,6 +221,26 @@ class Pipeline:
         text, conf = greedy_decode(logits[0, :valid_steps].cpu())
         return text, round(float(conf), 6)
 
+    def _ocr_spatial_tokens(self,plate_rgb: np.ndarray) -> list[dict]:
+        """Read an explicitly localized single-row plate view without unfolding."""
+        height,width = plate_rgb.shape[:2]
+        resized = max(self.ocr_min_width,min(round(self.ocr_h*width/height),self.ocr_wmax))
+        tensor = preprocess_for_ocr(plate_rgb,target_h=self.ocr_h,max_w=self.ocr_wmax,
+                                    min_resized_w=self.ocr_min_width,pad_to_max_width=self.ocr_pad_to_max_width)
+        with torch.no_grad():
+            logits = self.ocr(tensor.to(self.device))[0,:conv_out_width(resized)]
+        return vgg_ctc_tokens(logits,self.alphabet,source_width=width,resized_width=resized)
+
+    def _recognize_crop(self,crop: np.ndarray) -> dict:
+        text,confidence = self._ocr_crop(crop)
+        entry = {'text':text,'ocr_conf':confidence}
+        if self.authority_reader is not None:
+            region = self.authority_reader.read(Image.fromarray(crop))
+            if region is not None:
+                entry.update(text=region['text'],primary_ocr_text=text,authority_region=region,
+                             ocr_confidence_scope='primary_reading_before_region_ocr')
+        return entry
+
     # ------------------------------------------------------------------ #
     def run(self, image_path) -> dict:
         """Full pipeline for ONE scene. Returns the structured result dict."""
@@ -238,8 +269,8 @@ class Pipeline:
                     v["classification"], v["matched_rule"], v["normalized"])))
                 continue
 
-            text, conf = self._ocr_crop(crop)
-            ocr_entry = {"crop_box": box, "text": text, "ocr_conf": conf}
+            ocr_entry = {"crop_box": box, **self._recognize_crop(crop)}
+            text = ocr_entry['text']
             suggestion = possible_authority_text(text)
             if suggestion:
                 ocr_entry["possible_authority_text"] = suggestion
@@ -248,8 +279,10 @@ class Pipeline:
 
             v = validate(text)
             validations.append({"text": text, **v})
-            decisions.append(_review_required(decide(
-                v["classification"], v["matched_rule"], v["normalized"])))
+            decision = _review_required(decide(v["classification"],v["matched_rule"],v["normalized"]))
+            if 'authority_region' in ocr_entry:
+                decision.update(decision='FLAG_REVIEW',reason='separate prefix and number reading; verify image and country')
+            decisions.append(decision)
 
         if not detections:
             decisions.append({
@@ -281,6 +314,7 @@ class Pipeline:
                 "ocr_min_resized_w": self.ocr_min_width,
                 "ocr_pad_to_max_width": self.ocr_pad_to_max_width,
                 "ocr_layout_mode": self.ocr_layout_mode,
+                "authority_region_ocr": self.authority_reader is not None,
                 "crop_pad_pct": self.crop_pad_pct,
                 "device": str(self.device),
                 "seed": SEED,

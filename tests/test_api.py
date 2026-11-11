@@ -48,7 +48,7 @@ def test_company_demo_serves_upload_interface(api):
     assert 'lang="en"' in response.text
     assert 'Jordanian format match' in response.text
     assert "does not confirm the plate's country" in response.text
-    assert "fetch('/predict'" in response.text
+    assert "fetch('/demo/predict'" in response.text
     assert routes._pipeline is None
 
 
@@ -99,6 +99,35 @@ def test_missing_model_returns_503(api):
     Path(settings.ocr_model_path).unlink()
     response = client.post('/predict', files={'file': ('scene.png', png_bytes(), 'image/png')})
     assert response.status_code == 503
+
+
+def test_upload_demo_uses_camera_detector_without_archiving(api,monkeypatch,tmp_path):
+    client,settings=api
+    camera=tmp_path/'camera.pt'
+    camera.touch()
+    settings.camera_detector_model_path=str(camera)
+    seen={}
+    class StubPipeline:
+        def __init__(self,**kwargs):
+            seen.update(kwargs)
+        def run(self,path):
+            return {'image_path':str(path),'detections':[],'ocr_results':[]}
+    monkeypatch.setattr(routes,'Pipeline',StubPipeline)
+    response=client.post('/demo/predict',files={'file':('x.png',png_bytes(),'image/png')})
+    assert response.status_code==200
+    assert seen['detector_path']==camera
+    assert routes._pipeline is None
+    assert routes._camera_pipeline is not None
+
+
+def test_missing_configured_authority_model_is_visible_before_loading(api,tmp_path):
+    client,settings=api
+    settings.authority_model_path=str(tmp_path/'missing'/'english_g2.pth')
+    health=client.get('/health').json()
+    assert health['authority_region_enabled'] is True
+    assert health['authority_region_available'] is False
+    assert health['status']=='model_missing'
+    assert client.post('/predict',files={'file':('x.png',png_bytes(),'image/png')}).status_code==503
 
 
 def test_failure_cleans_temp_file(api, monkeypatch):

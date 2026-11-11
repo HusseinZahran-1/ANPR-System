@@ -132,3 +132,12 @@ Public source: [bau's Jordan plate dataset, version 4](https://universe.roboflow
 declared CC BY 4.0. Local receipts retain source attribution, original member
 hashes, reviewed crop geometry and visual transcriptions. Images and labels
 are not redistributed in this repository.
+
+## Visual region follow-up
+
+The later automatic visual region reader reaches 5/5 reused authority views
+(three physical plates) without changing primary OCR weights. Numeric and camera
+regression cohorts are unchanged. This supersedes the earlier statement that
+automatic region localization is unproven on these development images. It does
+not establish independent field accuracy. Foreign rejection remains unresolved.
+See [authority region evidence and setup](AUTHORITY_REGION_OCR.md).

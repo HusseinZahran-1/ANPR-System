@@ -33,6 +33,24 @@ class StubDetector:
         return [dict(d) for d in self._detections]
 
 
+def test_region_reading_keeps_primary_evidence_and_forces_review(monkeypatch,scene_path):
+    _install_stubs(monkeypatch,[{'box':[10,10,80,70],'det_conf':.9}],ocr_text='12')
+    monkeypatch.setattr(e2e,'load_prefix_reader',lambda *args:None)
+    class StubRegionReader:
+        def __init__(self,*args,**kwargs):
+            pass
+        def read(self,image):
+            return {'text':'CD12','prefix_text':'CD','numeric_suffix':'12',
+                    'prefix_confidence':.9,'suffix_confidence':.8,'requires_human_review':True}
+    monkeypatch.setattr(e2e,'AuthorityRegionReader',StubRegionReader)
+    result=Pipeline(authority_model_path='synthetic.pth').run(scene_path)
+    ocr=result['ocr_results'][0]
+    assert ocr['text']=='CD12' and ocr['primary_ocr_text']=='12'
+    assert ocr['ocr_confidence_scope']=='primary_reading_before_region_ocr'
+    assert result['decisions'][0]['decision']=='FLAG_REVIEW'
+    assert result['decisions'][0]['country_verified'] is False
+
+
 class StubOCR(torch.nn.Module):
     """Returns fixed logits that greedy-decode to ``text``."""
 
@@ -119,12 +137,12 @@ def test_multiple_detections_are_iterated(monkeypatch, scene_path):
 def test_authority_ambiguity_preserves_raw_ocr_and_requires_review(monkeypatch, scene_path):
     _install_stubs(monkeypatch, [{"box": [10, 10, 60, 40], "det_conf": 0.9}])
     pipeline = Pipeline()
-    monkeypatch.setattr(pipeline, "_ocr_crop", lambda crop: ("C012345", 0.96))
+    monkeypatch.setattr(pipeline, "_ocr_crop", lambda crop: ("C090001", 0.96))
     out = pipeline.run(scene_path)
-    assert out["ocr_results"][0]["text"] == "C012345"
-    assert out["ocr_results"][0]["possible_authority_text"] == "CD12345"
+    assert out["ocr_results"][0]["text"] == "C090001"
+    assert out["ocr_results"][0]["possible_authority_text"] == "CD90001"
     assert out["ocr_results"][0]["possible_authority_review_only"] is True
-    assert out["validations"][0]["normalized"] == "C012345"
+    assert out["validations"][0]["normalized"] == "C090001"
     assert out["decisions"][0]["decision"] == "FLAG_REVIEW"
 
 

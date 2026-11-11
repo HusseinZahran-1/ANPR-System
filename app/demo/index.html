@@ -43,7 +43,37 @@ function status(decision){if(decision==='ACCEPT_JORDANIAN')return ['Jordanian fo
 function draw(){if(!image.naturalWidth)return;canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const c=canvas.getContext('2d');c.drawImage(image,0,0);const scale=Math.max(2,image.naturalWidth/650);c.lineWidth=3*scale;c.font=`bold ${16*scale}px Segoe UI`;boxes.forEach((b,i)=>{const [x1,y1,x2,y2]=b.box;c.strokeStyle='#58dbc1';c.fillStyle='#58dbc1';c.strokeRect(x1,y1,x2-x1,y2-y1);c.fillRect(x1,Math.max(0,y1-24*scale),34*scale,24*scale);c.fillStyle='#09241e';c.fillText(String(i+1),x1+10*scale,Math.max(16*scale,y1-7*scale));});}
 function choose(file){if(!file)return;selected=null;boxes=[];msg.textContent='';if(!['image/jpeg','image/png'].includes(file.type)){msg.innerHTML='<div class="error">Choose a JPG or PNG image.</div>';return;}if(file.size>10*1024*1024){msg.innerHTML='<div class="error">The image exceeds 10 MB.</div>';return;}selected=file;document.getElementById('filename').textContent=file.name;run.disabled=false;results.className='empty';results.textContent='Click “Analyze image” to see the reading.';const url=URL.createObjectURL(file);image.onload=()=>{draw();preview.style.display='block';URL.revokeObjectURL(url)};image.src=url;}
 fileInput.addEventListener('change',()=>choose(fileInput.files[0]));drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag')});drop.addEventListener('dragleave',()=>drop.classList.remove('drag'));drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag');choose(e.dataTransfer.files[0])});
-run.addEventListener('click',async()=>{if(!selected)return;run.disabled=true;msg.innerHTML='<div class="loading">Analyzing image…</div>';const form=new FormData();form.append('file',selected,selected.name);try{const response=await fetch('/predict',{method:'POST',body:form});const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Could not analyze the image');boxes=Array.isArray(data.detections)?data.detections:[];draw();msg.textContent='';if(!boxes.length){results.className='';results.innerHTML='<span class="status warn">Needs review</span><p>No plate was detected clearly in this image.</p>';return;}results.className='';results.innerHTML=boxes.map((det,i)=>{const o=data.ocr_results?.[i]||{},d=data.decisions?.[i]||{};const [label,kind]=status(d.decision);const text=o.text||'Unreadable';const alternative=o.possible_authority_text?`<div class="small">Possible authority code: ${safeText(o.possible_authority_text)} · check the image before confirming.</div>`:'';const detConf=Math.max(0,Math.min(100,Math.round((det.det_conf||0)*100)));return `<article class="plate"><span class="status ${kind}">${label}</span><div class="small">Plate ${i+1}</div><div class="num">${safeText(text)}</div>${alternative}<div class="small">Detector signal: ${detConf}% — not the reading accuracy</div><div class="bar"><span style="width:${detConf}%"></span></div><div class="small">Human review required before use</div></article>`}).join('');const extra=Math.max(0,(data.meta?.detector_candidate_count||boxes.length)-boxes.length);if(extra)results.innerHTML+=`<p class="hint">${extra} additional detector candidate${extra===1?' was':'s were'} excluded by single-plate demo mode.</p>`;}catch(e){msg.innerHTML=`<div class="error">${safeText(e.message)}</div>`}finally{run.disabled=false}});
+run.addEventListener('click',async()=>{
+  if(!selected)return;
+  run.disabled=true;
+  msg.innerHTML='<div class="loading">Analyzing image…</div>';
+  const form=new FormData();form.append('file',selected,selected.name);
+  try{
+    const response=await fetch('/demo/predict',{method:'POST',body:form});
+    const data=await response.json();
+    if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Could not analyze the image');
+    boxes=Array.isArray(data.detections)?data.detections:[];draw();msg.textContent='';
+    if(!boxes.length){
+      results.className='';
+      results.innerHTML='<span class="status warn">Needs review</span><p>No plate was detected clearly in this image.</p>';
+      return;
+    }
+    results.className='';
+    results.innerHTML=boxes.map((det,i)=>{
+      const o=data.ocr_results?.[i]||{},d=data.decisions?.[i]||{};
+      const [label,kind]=status(d.decision);
+      const text=o.text||'Unreadable';
+      const alternative=o.possible_authority_text?`<div class="small">Possible authority code: ${safeText(o.possible_authority_text)} · check the image before confirming.</div>`:'';
+      const region=o.authority_region;
+      const evidence=region?`<div class="small">Prefix: ${safeText(region.prefix_text)} · Number: ${safeText(region.numeric_suffix)}</div><div class="small">Original read: ${safeText(o.primary_ocr_text||'Unreadable')}</div><div class="small">Check both parts against the image.</div>`:'';
+      const detConf=Math.max(0,Math.min(100,Math.round((det.det_conf||0)*100)));
+      return `<article class="plate"><span class="status ${kind}">${label}</span><div class="small">Plate ${i+1}</div><div class="num">${safeText(text)}</div>${alternative}${evidence}<div class="small">Detector signal: ${detConf}% — not the reading accuracy</div><div class="bar"><span style="width:${detConf}%"></span></div><div class="small">Human review required before use</div></article>`;
+    }).join('');
+    const extra=Math.max(0,(data.meta?.detector_candidate_count||boxes.length)-boxes.length);
+    if(extra)results.innerHTML+=`<p class="hint">${extra} additional detector candidate${extra===1?' was':'s were'} excluded by single-plate demo mode.</p>`;
+  }catch(e){msg.innerHTML=`<div class="error">${safeText(e.message)}</div>`;}
+  finally{run.disabled=false;}
+});
 </script>
 </body>
 </html>

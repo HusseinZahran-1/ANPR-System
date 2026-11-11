@@ -107,6 +107,8 @@ class Settings:
     detector_model_path: str = DEFAULT_DETECTOR_PATH
     camera_detector_model_path: str = ""
     ocr_model_path: str = DEFAULT_OCR_PATH
+    authority_model_path: str = ""
+    authority_min_prefix_confidence: float = .8
     detection_conf: float = DEFAULT_DETECTION_CONF
     detection_imgsz: int = DEFAULT_DETECTION_IMGSZ
     detection_nms_iou: float = DEFAULT_DETECTION_NMS_IOU
@@ -132,6 +134,8 @@ class Settings:
             raise ValueError("DETECTION_NMS_IOU must be between 0 and 1")
         if self.detection_max_plates < 1:
             raise ValueError("DETECTION_MAX_PLATES must be positive")
+        if not 0 < self.authority_min_prefix_confidence <= 1:
+            raise ValueError('AUTHORITY_PREFIX_MIN_CONF must be between zero and one')
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -139,6 +143,8 @@ class Settings:
             detector_model_path=_env("MODEL_DETECTOR_PATH", DEFAULT_DETECTOR_PATH),
             camera_detector_model_path=_env("CAMERA_DETECTOR_PATH", ""),
             ocr_model_path=_env("MODEL_OCR_PATH", DEFAULT_OCR_PATH),
+            authority_model_path=_env('AUTHORITY_REGION_MODEL_PATH',''),
+            authority_min_prefix_confidence=_env_float('AUTHORITY_PREFIX_MIN_CONF',.8),
             detection_conf=_env_float("DETECTION_CONF", DEFAULT_DETECTION_CONF),
             detection_imgsz=_env_int("DETECTION_IMGSZ", DEFAULT_DETECTION_IMGSZ),
             detection_nms_iou=_env_float("DETECTION_NMS_IOU", DEFAULT_DETECTION_NMS_IOU),
@@ -167,6 +173,10 @@ class Settings:
     @property
     def ocr_path(self) -> Path:
         return resolve_path(self.ocr_model_path)
+
+    @property
+    def authority_path(self) -> Path | None:
+        return resolve_path(self.authority_model_path) if self.authority_model_path else None
 
 
 @lru_cache(maxsize=1)
