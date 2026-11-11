@@ -141,3 +141,9 @@ See [optional CD/SN region OCR](docs/AUTHORITY_REGION_OCR.md) for setup, measure
 development results and limitations. Manual demo uploads use `/demo/predict`,
 which shares the configured camera detector; general `/predict` keeps its own
 detector configuration. Start the local MVP manually with `./run_mvp.ps1`.
+
+## Experimental two-row preprocessing
+
+An optional geometry-based layout fixes four reused training-crop readings but
+does not fix detector misses on newly reviewed external full scenes. It remains
+disabled by default. See [two-row layout evidence](docs/ROW_LAYOUT.md).

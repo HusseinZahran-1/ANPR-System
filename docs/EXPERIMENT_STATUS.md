@@ -12,7 +12,7 @@ scenes: seed 42, image size 1280, batch 4, SGD learning rate 0.01, no flips,
 60-epoch cap and patience 12. Early stopping ended YOLO11n at 14 epochs and
 YOLOv8n at 22. Reported mAP values are from each selected best checkpoint.
 
-| Candidate | mAP50 | mAP50â€“95 | TP | FP | FN | Duplicate boxes |
+| Candidate | mAP50 | mAP50Ã¢â‚¬â€œ95 | TP | FP | FN | Duplicate boxes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | YOLO11n | 0.995 | 0.6730 | 14 | 1 | 0 | 0 |
 | Paired YOLOv8n control | 0.995 | 0.6969 | 14 | 0 | 0 | 0 |
@@ -147,3 +147,11 @@ See [authority region evidence and setup](AUTHORITY_REGION_OCR.md).
 See [the robustness follow-up](ROBUSTNESS_FOLLOWUP.md): perturbations expose
 prefix-recognition sensitivity, and a fourteen-identity numeric training expansion
 fails existing regression gates. The new candidate is not deployed.
+
+## Two-row geometry and external detector diagnosis
+
+An opt-in preprocessing mode fixes four numeric training-crop readings with
+existing validation/camera/scene cohorts unchanged. It remains disabled: HTTP
+uploads of fourteen reviewed external full scenes produce zero detections in
+both layouts. [Evidence and limitations](ROW_LAYOUT.md) separate crop fit from
+the unresolved detector problem. No checkpoint or running configuration changes.
