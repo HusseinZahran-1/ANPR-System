@@ -59,3 +59,9 @@ venv while existing GPU/vision dependencies were inherited with
 `--system-site-packages`; this is not a validated clean isolated installation.
 The manual demo does not archive uploads; authenticated camera ingestion retains
 its existing local archive. Private images, checkpoints and logs stay local.
+
+## Development robustness and further numeric data
+
+See [the robustness follow-up](ROBUSTNESS_FOLLOWUP.md): perturbations expose
+prefix-recognition sensitivity, and a fourteen-identity numeric training expansion
+fails existing regression gates. The new candidate is not deployed.

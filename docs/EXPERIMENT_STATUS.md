@@ -12,7 +12,7 @@ scenes: seed 42, image size 1280, batch 4, SGD learning rate 0.01, no flips,
 60-epoch cap and patience 12. Early stopping ended YOLO11n at 14 epochs and
 YOLOv8n at 22. Reported mAP values are from each selected best checkpoint.
 
-| Candidate | mAP50 | mAP50–95 | TP | FP | FN | Duplicate boxes |
+| Candidate | mAP50 | mAP50â€“95 | TP | FP | FN | Duplicate boxes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | YOLO11n | 0.995 | 0.6730 | 14 | 1 | 0 | 0 |
 | Paired YOLOv8n control | 0.995 | 0.6969 | 14 | 0 | 0 | 0 |
@@ -141,3 +141,9 @@ regression cohorts are unchanged. This supersedes the earlier statement that
 automatic region localization is unproven on these development images. It does
 not establish independent field accuracy. Foreign rejection remains unresolved.
 See [authority region evidence and setup](AUTHORITY_REGION_OCR.md).
+
+## Development robustness and further numeric data
+
+See [the robustness follow-up](ROBUSTNESS_FOLLOWUP.md): perturbations expose
+prefix-recognition sensitivity, and a fourteen-identity numeric training expansion
+fails existing regression gates. The new candidate is not deployed.
