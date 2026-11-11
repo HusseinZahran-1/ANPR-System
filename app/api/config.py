@@ -2,7 +2,7 @@
 
 Environment-driven configuration for the FastAPI service. Deliberately a plain
 :class:`dataclasses.dataclass` (no ``pydantic-settings`` dependency), per the
-Phase 12 brief and ``AI_DEVELOPMENT_PLAN.md`` §36.
+Phase 12 brief and ``AI_DEVELOPMENT_PLAN.md`` Â§36.
 
 Every value can be overridden through an environment variable; the defaults
 mirror the owner-approved Phase 11 pipeline settings and the frozen model
@@ -85,7 +85,7 @@ def _env_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def default_device() -> str:
-    """Return ``"cuda"`` when a CUDA device is usable, else ``"cpu"`` (§37)."""
+    """Return ``"cuda"`` when a CUDA device is usable, else ``"cpu"`` (Â§37)."""
     try:
         import torch
 
@@ -106,6 +106,8 @@ class Settings:
 
     detector_model_path: str = DEFAULT_DETECTOR_PATH
     camera_detector_model_path: str = ""
+    fallback_detector_model_path: str = ""
+    fallback_detection_conf: float = .05
     ocr_model_path: str = DEFAULT_OCR_PATH
     authority_model_path: str = ""
     authority_min_prefix_confidence: float = .8
@@ -128,6 +130,8 @@ class Settings:
         from app.ocr.layout import SUPPORTED_LAYOUTS
         if self.ocr_layout_mode not in SUPPORTED_LAYOUTS:
             raise ValueError(f"OCR_LAYOUT_MODE must be one of {SUPPORTED_LAYOUTS}")
+        if not 0 < self.fallback_detection_conf <= 1:
+            raise ValueError("FALLBACK_DETECTION_CONF must be between zero and one")
         if self.detection_imgsz <= 0 or self.detection_imgsz % 32:
             raise ValueError("DETECTION_IMGSZ must be a positive multiple of 32")
         if not 0 < self.detection_nms_iou < 1:
@@ -142,6 +146,8 @@ class Settings:
         return cls(
             detector_model_path=_env("MODEL_DETECTOR_PATH", DEFAULT_DETECTOR_PATH),
             camera_detector_model_path=_env("CAMERA_DETECTOR_PATH", ""),
+            fallback_detector_model_path=_env("FALLBACK_DETECTOR_PATH", ""),
+            fallback_detection_conf=_env_float("FALLBACK_DETECTION_CONF", .05),
             ocr_model_path=_env("MODEL_OCR_PATH", DEFAULT_OCR_PATH),
             authority_model_path=_env('AUTHORITY_REGION_MODEL_PATH',''),
             authority_min_prefix_confidence=_env_float('AUTHORITY_PREFIX_MIN_CONF',.8),
@@ -169,6 +175,10 @@ class Settings:
     @property
     def camera_detector_path(self) -> Path | None:
         return resolve_path(self.camera_detector_model_path) if self.camera_detector_model_path else None
+
+    @property
+    def fallback_detector_path(self) -> Path | None:
+        return resolve_path(self.fallback_detector_model_path) if self.fallback_detector_model_path else None
 
     @property
     def ocr_path(self) -> Path:

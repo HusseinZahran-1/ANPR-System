@@ -38,3 +38,8 @@ documentation through the existing pull request; deployment requires measured
 evidence, and the candidate experiment does not change runtime configuration.
 
 Reference: [official YOLO11 model documentation](https://docs.ultralytics.com/models/yolo11/).
+
+A later optional second-pass model is also YOLOv8n, trained on a reviewed external
+expansion with balanced source sampling. It does not replace working primary
+boxes. See [primary-first fallback](FALLBACK_DETECTOR.md); this is a data/pipeline
+improvement rather than a YOLO11 architecture promotion.

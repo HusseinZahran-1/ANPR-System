@@ -12,7 +12,7 @@ scenes: seed 42, image size 1280, batch 4, SGD learning rate 0.01, no flips,
 60-epoch cap and patience 12. Early stopping ended YOLO11n at 14 epochs and
 YOLOv8n at 22. Reported mAP values are from each selected best checkpoint.
 
-| Candidate | mAP50 | mAP50Ã¢â‚¬â€œ95 | TP | FP | FN | Duplicate boxes |
+| Candidate | mAP50 | mAP50ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“95 | TP | FP | FN | Duplicate boxes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | YOLO11n | 0.995 | 0.6730 | 14 | 1 | 0 | 0 |
 | Paired YOLOv8n control | 0.995 | 0.6969 | 14 | 0 | 0 | 0 |
@@ -155,3 +155,16 @@ existing validation/camera/scene cohorts unchanged. It remains disabled: HTTP
 uploads of fourteen reviewed external full scenes produce zero detections in
 both layouts. [Evidence and limitations](ROW_LAYOUT.md) separate crop fit from
 the unresolved detector problem. No checkpoint or running configuration changes.
+
+## Reviewed detector expansion and composed fallback
+
+Twenty manually checked external detector envelopes add ten training and ten
+validation identities; eight clipped cases stay excluded. Both a mixed and a
+balanced warm-start YOLOv8n were trained. Direct replacement fails older scene
+gates. Primary-first composition keeps the existing detector at 0.25 and calls
+the balanced detector at 0.05 only when no primary boxes exist. With v4 layout,
+external detector-validation scene exact rises 0/10 to 4/10 (six still missed),
+with older scene/camera/authority results unchanged. These are reused development
+counts, not field accuracy. Real HTTP/live checks cover 25 isolated events with
+the physical archive unchanged. See [data and rejected replacements](DETECTOR_EXPANSION.md)
+and [composition, verification and limits](FALLBACK_DETECTOR.md).

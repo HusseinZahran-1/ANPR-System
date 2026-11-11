@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+import math
 
 import numpy as np
 import torch
@@ -46,6 +47,7 @@ from app.ocr.layout import SUPPORTED_LAYOUTS, prepare_layout
 
 # Application-layer modules (no sys.path manipulation, no training-script import).
 from app.detector import DEFAULT_CONF, DEFAULT_IOU, PlateDetector
+from app.detector.cascade import PrimaryFirstDetector
 from app.ocr import conv_out_width, greedy_decode, load_crnn_checkpoint
 from app.ocr.authority_review import possible_authority_text
 from app.ocr.authority_regions import AuthorityRegionReader,load_prefix_reader
@@ -152,11 +154,19 @@ class Pipeline:
                  crop_pad_pct: float = 0.0, layout_mode: str | None = None,
                  max_plates: int | None = None,
                  authority_model_path: str | Path | None = None,
-                 authority_min_prefix_confidence: float = .8):
+                 authority_min_prefix_confidence: float = .8,
+                 fallback_detector_path: str | Path | None = None,
+                 fallback_det_conf: float = .05):
         torch.manual_seed(SEED)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+        self.fallback_det_conf = float(fallback_det_conf)
+        if not math.isfinite(self.fallback_det_conf) or not 0 < self.fallback_det_conf <= 1:
+            raise ValueError("fallback detection confidence must be between zero and one")
+        self.fallback_detector_path = str(Path(fallback_detector_path).resolve()) if fallback_detector_path is not None else None
+        if self.fallback_detector_path and not Path(self.fallback_detector_path).is_file():
+            raise FileNotFoundError("configured fallback detector model is missing")
         self.det_conf = float(det_conf)
         self.imgsz = int(imgsz)
         self.nms_iou = float(nms_iou)
@@ -186,6 +196,10 @@ class Pipeline:
         self.device = loaded["device"]
         self.detector_path = str(Path(detector_path))
         self.ocr_path = str(Path(ocr_path))
+        if self.fallback_detector_path is not None:
+            fallback = PlateDetector(self.fallback_detector_path, device=self.device,
+                                     imgsz=self.imgsz, conf=self.fallback_det_conf, iou=self.nms_iou)
+            self.detector = PrimaryFirstDetector(self.detector, fallback)
         self.authority_reader = None
         if authority_model_path is not None:
             prefix_reader = load_prefix_reader(str(Path(authority_model_path).resolve()),str(self.device))
@@ -282,12 +296,14 @@ class Pipeline:
             decision = _review_required(decide(v["classification"],v["matched_rule"],v["normalized"]))
             if 'authority_region' in ocr_entry:
                 decision.update(decision='FLAG_REVIEW',reason='separate prefix and number reading; verify image and country')
+            if det.get('detector_source') == 'fallback':
+                decision.update(decision='FLAG_REVIEW',reason='secondary detector reading; verify image and country')
             decisions.append(decision)
 
         if not detections:
             decisions.append({
                 "decision": "FLAG_REVIEW",
-                "reason": f"no plate detected above threshold {self.det_conf:g}",
+                "reason": "no plate detected by the configured detectors" if self.fallback_detector_path else f"no plate detected above threshold {self.det_conf:g}",
                 "matched_rule": None,
                 "speculative": False,
                 "country_verified": False,
@@ -307,6 +323,10 @@ class Pipeline:
                 "country_verified": False,
                 "requires_human_review": True,
                 "det_conf_threshold": self.det_conf,
+                "detector_source": detections[0].get("detector_source", "primary") if detections else None,
+                "fallback_detector": self.fallback_detector_path,
+                "fallback_det_conf_threshold": self.fallback_det_conf if self.fallback_detector_path else None,
+                "fallback_attempted": bool(self.fallback_detector_path) and (not detections or detections[0].get("detector_source") == "fallback"),
                 "det_nms_iou": self.nms_iou,
                 "max_plates": self.max_plates,
                 "detector_candidate_count": candidate_count,

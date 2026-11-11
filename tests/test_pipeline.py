@@ -230,3 +230,19 @@ def test_exif_scene_pixels_match_opencv_detector_frame(tmp_path, orientation):
 
     detector_rgb = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
     assert np.array_equal(load_scene(path), detector_rgb)
+
+
+def test_optional_fallback_preserves_threshold_provenance_and_forces_review(monkeypatch,scene_path):
+    _install_stubs(monkeypatch,[],ocr_text="1234567")
+    weights=scene_path.with_suffix(".pt");weights.touch()
+    monkeypatch.setattr(e2e,"PlateDetector",lambda *args,**kwargs:StubDetector([{"box":[10,10,80,70],"det_conf":.08}]))
+    result=Pipeline(fallback_detector_path=weights,fallback_det_conf=.05).run(scene_path)
+    assert result["ocr_results"][0]["text"]=="1234567"
+    assert result["detections"][0]["det_conf"]==.08
+    assert result["meta"]["detector_source"]=="fallback"
+    assert result["meta"]["fallback_attempted"] is True
+    assert result["meta"]["det_conf_threshold"]==.25
+    assert result["meta"]["fallback_det_conf_threshold"]==.05
+    assert result["decisions"][0]["decision"]=="FLAG_REVIEW"
+    assert result["decisions"][0]["country_verified"] is False
+    assert result["decisions"][0]["requires_human_review"] is True

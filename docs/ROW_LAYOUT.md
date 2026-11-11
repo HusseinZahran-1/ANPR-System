@@ -1,7 +1,8 @@
 # Optional geometry-based two-row layout
 
 `rectify_unfold_rows_v4` is an experimental OCR layout override. It remains
-opt-in; the default and the running MVP retain `rectify_unfold_wide_v3`.
+opt-in; the configuration default retains `rectify_unfold_wide_v3`. A later
+local pilot combines v4 with the separately validated optional detector fallback.
 No detector or OCR checkpoint is replaced by this change.
 
 The existing aspect-only preprocessing can miss two-row plates whose crop is
@@ -61,7 +62,9 @@ demo uses the configured camera detector. On a diagnostic source, neither the
 camera detector nor the older general detector yields a box at confidence 0.25;
 lower-score boxes do not localize the visible plate. Blindly reducing confidence
 is not supported by this observation. The crop improvement does not solve
-this detector failure, so the new mode is not enabled in the running MVP.
+this detector failure by itself. A later primary-first fallback recovers four
+of ten reviewed external detector-validation scenes without the measured older
+scene regressions; see [fallback evidence](FALLBACK_DETECTOR.md).
 
 The test uses manual demo uploads without archiving them; the physical-camera
 event log hash is unchanged. These sources were assigned to OCR training, so

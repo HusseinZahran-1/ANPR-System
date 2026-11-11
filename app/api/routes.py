@@ -34,6 +34,8 @@ def _get_pipeline() -> Pipeline:
                     raise FileNotFoundError(f"OCR model not found: {settings.ocr_path}")
                 if settings.authority_path is not None and not settings.authority_path.is_file():
                     raise FileNotFoundError('configured authority OCR model is missing')
+                if settings.fallback_detector_path is not None and not settings.fallback_detector_path.is_file():
+                    raise FileNotFoundError('configured fallback detector model is missing')
                 _pipeline = Pipeline(
                     detector_path=settings.detector_path,
                     ocr_path=settings.ocr_path,
@@ -45,6 +47,8 @@ def _get_pipeline() -> Pipeline:
                     device=settings.device,
                     authority_model_path=settings.authority_path,
                     authority_min_prefix_confidence=settings.authority_min_prefix_confidence,
+                    fallback_detector_path=settings.fallback_detector_path,
+                    fallback_det_conf=settings.fallback_detection_conf,
                 )
     return _pipeline
 
@@ -64,6 +68,8 @@ def _get_camera_pipeline() -> Pipeline:
                     raise FileNotFoundError(f"OCR model not found: {settings.ocr_path}")
                 if settings.authority_path is not None and not settings.authority_path.is_file():
                     raise FileNotFoundError('configured authority OCR model is missing')
+                if settings.fallback_detector_path is not None and not settings.fallback_detector_path.is_file():
+                    raise FileNotFoundError('configured fallback detector model is missing')
                 _camera_pipeline = Pipeline(
                     detector_path=detector_path,
                     ocr_path=settings.ocr_path,
@@ -75,6 +81,8 @@ def _get_camera_pipeline() -> Pipeline:
                     device=settings.device,
                     authority_model_path=settings.authority_path,
                     authority_min_prefix_confidence=settings.authority_min_prefix_confidence,
+                    fallback_detector_path=settings.fallback_detector_path,
+                    fallback_det_conf=settings.fallback_detection_conf,
                 )
     return _camera_pipeline
 
@@ -94,7 +102,8 @@ def health() -> dict:
     camera_detector_ok = settings.camera_detector_path is None or settings.camera_detector_path.is_file()
     ocr_ok = settings.ocr_path.is_file()
     authority_ok = settings.authority_path is None or settings.authority_path.is_file()
-    ready = detector_ok and camera_detector_ok and ocr_ok and authority_ok
+    fallback_ok = settings.fallback_detector_path is None or settings.fallback_detector_path.is_file()
+    ready = detector_ok and camera_detector_ok and ocr_ok and authority_ok and fallback_ok
     return {
         "status": "ready" if ready else "model_missing",
         "models_loaded": _pipeline is not None,
@@ -104,6 +113,8 @@ def health() -> dict:
         "ocr_available": ocr_ok,
         "authority_region_enabled": settings.authority_path is not None,
         "authority_region_available": authority_ok,
+        "fallback_detector_enabled": settings.fallback_detector_path is not None,
+        "fallback_detector_available": fallback_ok,
         "device": settings.device,
     }
 

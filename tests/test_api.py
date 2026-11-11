@@ -171,3 +171,47 @@ def test_invalid_detection_nms_iou_rejected(iou):
 def test_invalid_detection_max_plates_rejected():
     with pytest.raises(ValueError, match='DETECTION_MAX_PLATES'):
         Settings(detection_max_plates=0)
+
+
+def test_missing_configured_fallback_is_visible_before_loading(api,tmp_path):
+    client,settings=api
+    settings.fallback_detector_model_path=str(tmp_path/"missing-fallback.pt")
+    health=client.get("/health").json()
+    assert health["fallback_detector_enabled"] is True
+    assert health["fallback_detector_available"] is False
+    assert health["status"]=="model_missing"
+    assert client.post("/demo/predict",files={"file":("source.png",png_bytes(),"image/png")}).status_code==503
+    assert routes._pipeline is None and routes._camera_pipeline is None
+
+
+@pytest.mark.parametrize("value",[0,1.1,float("nan")])
+def test_invalid_fallback_confidence_is_rejected(value):
+    with pytest.raises(ValueError,match="FALLBACK_DETECTION_CONF"):
+        Settings(fallback_detection_conf=value)
+
+
+def test_optional_fallback_settings_are_read_from_environment(monkeypatch):
+    monkeypatch.setenv("FALLBACK_DETECTOR_PATH","models/local/secondary.pt")
+    monkeypatch.setenv("FALLBACK_DETECTION_CONF","0.05")
+    settings=Settings.from_env()
+    assert settings.fallback_detector_path.name=="secondary.pt"
+    assert settings.fallback_detection_conf==.05
+
+
+@pytest.mark.parametrize("endpoint",["/predict","/demo/predict"])
+def test_optional_fallback_is_forwarded_to_both_pipeline_profiles(api,tmp_path,monkeypatch,endpoint):
+    client,settings=api
+    fallback=tmp_path/"secondary.pt";fallback.touch()
+    camera=tmp_path/"camera.pt";camera.touch()
+    settings.fallback_detector_model_path=str(fallback)
+    settings.camera_detector_model_path=str(camera)
+    captured={}
+    class StubPipeline:
+        def __init__(self,**kwargs):captured.update(kwargs)
+        def run(self,path):return {"detections":[],"ocr_results":[]}
+    monkeypatch.setattr(routes,"Pipeline",StubPipeline)
+    response=client.post(endpoint,files={"file":("source.png",png_bytes(),"image/png")})
+    assert response.status_code==200
+    assert captured["fallback_detector_path"]==fallback
+    assert captured["fallback_det_conf"]==.05
+    assert captured["detector_path"]==(camera if endpoint=="/demo/predict" else settings.detector_path)

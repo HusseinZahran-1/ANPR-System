@@ -15,6 +15,7 @@ does not establish the plate's country or authorize an access decision.
 - Authenticated camera uploads and direct ISAPI2 multipart image ingestion.
 - Live browser polling, durable local image archive, and quarantined reviews.
 - Optional camera detector override and single-plate gate settings.
+- Optional primary-first fallback detector with separate confidence and mandatory review.
 
 ## Requirements and Windows installation
 
@@ -147,3 +148,11 @@ detector configuration. Start the local MVP manually with `./run_mvp.ps1`.
 An optional geometry-based layout fixes four reused training-crop readings but
 does not fix detector misses on newly reviewed external full scenes. It remains
 disabled by default. See [two-row layout evidence](docs/ROW_LAYOUT.md).
+
+## Broader-image detection fallback
+
+A validated optional second detector is tried only after the primary finds no
+boxes. Combined with two-row preprocessing, it reads four of ten reused external
+validation scenes previously missed entirely, while measured camera/older-scene
+results remain unchanged. Six external scenes still fail; independent field
+accuracy and country rejection remain unresolved. See [setup and evidence](docs/FALLBACK_DETECTOR.md).
