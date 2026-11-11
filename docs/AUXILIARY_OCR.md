@@ -41,3 +41,9 @@ experiments remain local. Review [experiment results](EXPERIMENT_STATUS.md)
 for measured outcomes and [upgrade policy](MODEL_UPGRADES.md) for promotion
 requirements. Broader numeric, authority, camera and localization regressions
 must be checked before changing the deployed pipeline.
+
+The completed full-model candidates improved the reused authority probe to
+1/5 and 2/5 but regressed on an existing numeric scene. Classifier-only
+follow-ups preserved numeric results but did not improve complete authority
+readings. No candidate from these experiments is deployed. Isolated prefix
+training fit must not be reported as full-plate accuracy.

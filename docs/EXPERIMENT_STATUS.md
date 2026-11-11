@@ -103,10 +103,29 @@ from 0/5 to 1/5 on the reused probe. Camera results are unchanged, but the
 scene cohorts regress from 40/45 to 39/45 and from 10/16 to 9/16; the other
 two cohorts remain 12/14 and 5/5. The candidate is not promoted.
 
-A controlled follow-up freezes BatchNorm running statistics during ordinary
-full-plate batches too, while retaining the same data, loss weights and
-schedule. This tests normalization drift; its results are pending. These
-experiments do not add physical authority identities or prove field accuracy.
+A controlled follow-up also froze BatchNorm statistics during full-plate
+batches. Its selected epoch 6 of 8 reads 98/110 validation views with 28/709
+character edits and 2/5 authority views exactly. Those two authority successes
+show the same physical CD plate, so they are not independent identities.
+Camera nontraining views remain 15/15 and training fit becomes 98/98, but the
+same scene-cohort regression persists at 39/45 and 9/16. It is not promoted.
+
+Two classifier-only follow-ups update only C/D/N/S output rows. Feature and
+context layers, normalization state, blank, digit and other classifier rows
+remain byte-for-byte unchanged; zero weight decay and per-epoch state checks
+guard against masked rows silently changing. The base-rate run reads 0/5
+authority views. A 10-times-faster row learning rate improves prefix training
+fit from 5/9 to 8/9, but full authority reading remains 0/5. The faster run
+retains 96/110 validation with 29 edits, all four scene cohorts at baseline
+counts (40/45, 12/14, 5/5, 10/16), and unchanged camera results. It is not
+promoted because it provides no complete authority-reading gain. Width-eight
+CTC beam decoding also leaves authority exact counts unchanged for the
+frozen-statistics and faster classifier-only candidates.
+
+These experiments add no physical authority identities and do not prove field
+accuracy. They show that learning isolated letter crops is insufficient to
+resolve the whole-plate contextual and alignment errors. The deployed OCR
+remains unchanged; automatic letter-region localization remains unproven.
 See [auxiliary OCR experiment](AUXILIARY_OCR.md) for the objective and guards.
 
 Public source: [bau's Jordan plate dataset, version 4](https://universe.roboflow.com/bau-l8e0s/number-plate-recognition-jordan/dataset/4),
