@@ -97,6 +97,9 @@ tests/          public tests using synthetic inputs and model stubs
 ```
 
 For reviewed public-source acquisition, see [Public data](docs/PUBLIC_DATA.md).
+For measured detector/OCR comparisons and their limits, see
+[Development experiment results](docs/EXPERIMENT_STATUS.md) and the
+[model upgrade policy](docs/MODEL_UPGRADES.md).
 The importer saves images locally in quarantine without admitting them to training.
 
 Historical training scripts, private annotations, experiments, and deployment

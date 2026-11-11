@@ -1,8 +1,9 @@
 # Detector and OCR upgrade policy
 
-The current detector family is YOLOv8n. A YOLO11n candidate experiment is in
-progress; no performance improvement or deployment promotion is established.
-Both model families can use the existing Ultralytics detection adapter.
+The current detector family is YOLOv8n. The first paired YOLO11n comparison
+completed without demonstrating an upgrade; the deployed detector is retained.
+Both model families can use the existing Ultralytics detection adapter. See
+[development experiment results](EXPERIMENT_STATUS.md) for measured limits.
 
 The architecture comparison starts each model from its own COCO-pretrained
 checkpoint and uses the same reviewed development images, split, image size,
