@@ -85,6 +85,30 @@ An additional local pretrained English recognizer probe, with uppercase-only
 and case-folded decoding, also reads 0/5 authority views exactly; it is not
 adopted as an alternate recognizer.
 
+## Prefix-region follow-up
+
+Manually localized current-format prefix crops give a different diagnostic:
+the same pretrained English recognizer reads 4/5 prefix regions exactly,
+while the project recognizer reads 0/5. These are manually localized letters,
+not complete plates or an automatic localization result. Nine training-only
+prefix crops from two existing identities were verified for an auxiliary
+training experiment; the five diagnostic regions remain outside training.
+The first attempt stopped before completing an epoch because cuDNN recurrent
+backward requires training mode. The corrected experiment freezes only
+BatchNorm statistics for prefix forwards, retains recurrent training mode,
+and has a synthetic CUDA/CPU backward regression check. It completed six
+epochs, selecting epoch 3: 98/110 validation exact and 26/709 character edits,
+versus 96/110 and 29/709 for the baseline. Full authority reading improves
+from 0/5 to 1/5 on the reused probe. Camera results are unchanged, but the
+scene cohorts regress from 40/45 to 39/45 and from 10/16 to 9/16; the other
+two cohorts remain 12/14 and 5/5. The candidate is not promoted.
+
+A controlled follow-up freezes BatchNorm running statistics during ordinary
+full-plate batches too, while retaining the same data, loss weights and
+schedule. This tests normalization drift; its results are pending. These
+experiments do not add physical authority identities or prove field accuracy.
+See [auxiliary OCR experiment](AUXILIARY_OCR.md) for the objective and guards.
+
 Public source: [bau's Jordan plate dataset, version 4](https://universe.roboflow.com/bau-l8e0s/number-plate-recognition-jordan/dataset/4),
 declared CC BY 4.0. Local receipts retain source attribution, original member
 hashes, reviewed crop geometry and visual transcriptions. Images and labels
