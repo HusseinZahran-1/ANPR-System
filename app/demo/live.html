@@ -60,6 +60,8 @@ function showAnalysis(event){
   analysis.replaceChildren();addText(analysis,'div',plateText(event),'num');
   const d=event.result?.decisions?.[0],ocr=event.result?.ocr_results?.[0];
   addText(analysis,'div',d?.decision==='ACCEPT_JORDANIAN'?'Jordanian format match · verify country':'Needs review','pill');
+  const parts=ocr?.plate_parts;
+  if(parts)addText(analysis,'div',`Plate code: ${parts.plate_code??'Unresolved'} · Plate number: ${parts.plate_number??'Unresolved'}`,'detail');
   const suggestion=ocr?.possible_authority_text;
   if(suggestion)addText(analysis,'div',`Possible authority code: ${suggestion} · check the image before confirming.`,'detail');
   if(ocr?.authority_region){

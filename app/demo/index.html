@@ -64,10 +64,12 @@ run.addEventListener('click',async()=>{
       const [label,kind]=status(d.decision);
       const text=o.text||'Unreadable';
       const alternative=o.possible_authority_text?`<div class="small">Possible authority code: ${safeText(o.possible_authority_text)} · check the image before confirming.</div>`:'';
+      const parts=o.plate_parts;
+      const partsHtml=parts?`<div class="small">Plate code: ${safeText(parts.plate_code??'Unresolved')} · Plate number: ${safeText(parts.plate_number??'Unresolved')}</div>`:'';
       const region=o.authority_region;
       const evidence=region?`<div class="small">Prefix: ${safeText(region.prefix_text)} · Number: ${safeText(region.numeric_suffix)}</div><div class="small">Original read: ${safeText(o.primary_ocr_text||'Unreadable')}</div><div class="small">Check both parts against the image.</div>`:'';
       const detConf=Math.max(0,Math.min(100,Math.round((det.det_conf||0)*100)));
-      return `<article class="plate"><span class="status ${kind}">${label}</span><div class="small">Plate ${i+1}</div><div class="num">${safeText(text)}</div>${alternative}${evidence}<div class="small">Detector signal: ${detConf}% — not the reading accuracy</div><div class="bar"><span style="width:${detConf}%"></span></div><div class="small">Human review required before use</div></article>`;
+      return `<article class="plate"><span class="status ${kind}">${label}</span><div class="small">Plate ${i+1}</div><div class="num">${safeText(text)}</div>${partsHtml}${alternative}${evidence}<div class="small">Detector signal: ${detConf}% — not the reading accuracy</div><div class="bar"><span style="width:${detConf}%"></span></div><div class="small">Human review required before use</div></article>`;
     }).join('');
     const extra=Math.max(0,(data.meta?.detector_candidate_count||boxes.length)-boxes.length);
     if(extra)results.innerHTML+=`<p class="hint">${extra} additional detector candidate${extra===1?' was':'s were'} excluded by single-plate demo mode.</p>`;

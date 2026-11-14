@@ -74,3 +74,11 @@ new detector training ground truth. Detector annotation review and a controlled
 training expansion are still needed. Images, labels, weights and private
 per-image reports remain local; original and external held-out test pixels
 remain unopened.
+
+## Recovery-only v5 pilot
+
+`rectify_unfold_rows_v5` admits wider connected components and glyphs further
+left than v4. It falls back to v4 without a geometric row proposal. The measured
+composition applies it only to the final recovery detector stage, preserving
+v4 on primary and first-fallback crops. OCR weights remain frozen.
+See [recovery ablations and evidence](RECOVERY_AND_FRAGMENTS.md).

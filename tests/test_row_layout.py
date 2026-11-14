@@ -70,3 +70,23 @@ def test_outside_new_proposal_range_keeps_legacy_behavior(size):
 def test_invalid_cut_is_rejected(cut):
     with pytest.raises(ValueError,match="cut"):
         unfold_at_cut(Image.new("RGB",(80,100)),cut)
+
+
+def test_v5_recovers_rows_with_left_shifted_and_touching_glyphs_without_changing_v4():
+    image=Image.new("RGB",(240,110),"white");draw=ImageDraw.Draw(image)
+    for x in (120,152):draw.rectangle((x,10,x+15,40),fill="black")
+    for x0,x1 in ((50,66),(90,148),(180,195),(210,225)):
+        draw.rectangle((x0,65,x1,100),fill="black")
+    before=np.asarray(image).copy()
+    assert propose_two_row_cut(image) is None
+    proposal=propose_two_row_cut(image,minimum_x_ratio=.15,maximum_component_aspect=2.)
+    assert proposal is not None and 41<proposal["cut"]<65
+    result=prepare_layout(image,"rectify_unfold_rows_v5")
+    expected,_=unfold_at_cut(image,proposal["cut"])
+    assert np.array_equal(np.asarray(result),np.asarray(expected))
+    assert np.array_equal(np.asarray(image),before)
+
+
+def test_v5_insufficient_geometry_retains_v4_pixels():
+    image=Image.new("RGB",(240,110),"white")
+    assert np.array_equal(np.asarray(prepare_layout(image,"rectify_unfold_rows_v5")),np.asarray(prepare_layout(image,"rectify_unfold_rows_v4")))

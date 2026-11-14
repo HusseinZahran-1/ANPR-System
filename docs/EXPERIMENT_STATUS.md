@@ -168,3 +168,13 @@ with older scene/camera/authority results unchanged. These are reused developmen
 counts, not field accuracy. Real HTTP/live checks cover 25 isolated events with
 the physical archive unchanged. See [data and rejected replacements](DETECTOR_EXPANSION.md)
 and [composition, verification and limits](FALLBACK_DETECTOR.md).
+
+## Recovery and aligned fragment follow-up
+
+Optional final-checkpoint recovery and single-plate fallback fragment geometry
+raise prior external validation 4/10 to 6/10 and additional external development
+4/10 to 6/10 exact. Older camera/scene/authority readings stay unchanged.
+These reused cohorts do not establish field accuracy. Twenty derived backgrounds
+remain empty; foreign format false matches remain 8/9. Real HTTP/live/image
+checks cover 55 isolated events without changing the physical-camera archive.
+See [complete evidence and remaining errors](RECOVERY_AND_FRAGMENTS.md).

@@ -39,3 +39,27 @@ def test_primary_error_is_not_interpreted_as_an_empty_scene():
     detector=PrimaryFirstDetector(Broken(),FakeDetector([],events,"fallback"))
     with pytest.raises(RuntimeError,match="primary failure"):detector.detect("source")
     assert events==[]
+
+
+@pytest.mark.parametrize("found_stage",["primary","fallback","recovery"])
+def test_nested_recovery_preserves_first_nonempty_stage(found_stage):
+    events=[];box={"box":[0,0,10,10],"det_conf":.07}
+    detectors={name:FakeDetector([box] if name==found_stage else [],events,name) for name in ("primary","fallback","recovery")}
+    first=PrimaryFirstDetector(detectors["primary"],detectors["fallback"])
+    composed=PrimaryFirstDetector(first,detectors["recovery"],fallback_source="recovery")
+    result=composed.detect("source")
+    assert result[0]["det_conf"]==.07
+    assert result[0].get("detector_source","primary")==found_stage
+    expected=["primary","fallback","recovery"][:["primary","fallback","recovery"].index(found_stage)+1]
+    assert [name for name,_ in events]==expected
+    assert "detector_source" not in box
+
+
+def test_recovery_does_not_hide_a_fallback_error():
+    events=[]
+    class Broken:
+        def detect(self,path):raise RuntimeError("fallback failed")
+    first=PrimaryFirstDetector(FakeDetector([],events,"primary"),Broken())
+    composed=PrimaryFirstDetector(first,FakeDetector([],events,"recovery"),fallback_source="recovery")
+    with pytest.raises(RuntimeError,match="fallback failed"):composed.detect("source")
+    assert [name for name,_ in events]==["primary"]

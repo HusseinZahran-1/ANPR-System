@@ -156,3 +156,11 @@ boxes. Combined with two-row preprocessing, it reads four of ten reused external
 validation scenes previously missed entirely, while measured camera/older-scene
 results remain unchanged. Six external scenes still fail; independent field
 accuracy and country rejection remain unresolved. See [setup and evidence](docs/FALLBACK_DETECTOR.md).
+
+The optional [recovery and aligned-fragment pilot](docs/RECOVERY_AND_FRAGMENTS.md)
+addresses two-row misses and split plate boxes in the single-plate demo.
+It remains a development pilot with mandatory review and separately reported
+raw detector errors; the public defaults keep both new features off.
+
+Final readings also expose [separate plate code and number](docs/PLATE_PARTS.md)
+in the API, demo and live view, with unresolved boundaries left explicit.

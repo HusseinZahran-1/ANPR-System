@@ -93,3 +93,10 @@ model startup and do not establish a production latency SLA.
 Original and external held-out test pixels stay unopened. All raw-image hashes
 remain unchanged. No source images, annotation transcripts, model weights,
 camera settings or private per-image logs are published.
+
+## Later recovery and fragment pilot
+
+The counts above describe the earlier two-stage configuration. The later
+optional recovery pass and within-model fragment unions raise both external
+evaluation cohorts from 4/10 to 6/10 exact, with older gates unchanged.
+See [configuration, raw/post-geometry metrics and limitations](RECOVERY_AND_FRAGMENTS.md).

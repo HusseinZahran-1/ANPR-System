@@ -215,3 +215,52 @@ def test_optional_fallback_is_forwarded_to_both_pipeline_profiles(api,tmp_path,m
     assert captured["fallback_detector_path"]==fallback
     assert captured["fallback_det_conf"]==.05
     assert captured["detector_path"]==(camera if endpoint=="/demo/predict" else settings.detector_path)
+
+
+def test_recovery_requires_fallback_configuration():
+    with pytest.raises(ValueError,match="requires FALLBACK"):
+        Settings(recovery_detector_model_path="models/local/recovery.pt")
+
+
+def test_missing_recovery_is_visible_without_model_loading(api,tmp_path):
+    client,settings=api
+    fallback=tmp_path/"fallback.pt";fallback.touch()
+    settings.fallback_detector_model_path=str(fallback)
+    settings.recovery_detector_model_path=str(tmp_path/"missing-recovery.pt")
+    health=client.get("/health").json()
+    assert health["recovery_detector_enabled"] is True and health["recovery_detector_available"] is False
+    assert health["status"]=="model_missing"
+    assert client.post("/demo/predict",files={"file":("source.png",png_bytes(),"image/png")}).status_code==503
+    assert routes._pipeline is None and routes._camera_pipeline is None
+
+
+@pytest.mark.parametrize("endpoint",["/predict","/demo/predict"])
+def test_recovery_configuration_is_forwarded_to_both_profiles(api,tmp_path,monkeypatch,endpoint):
+    client,settings=api
+    fallback=tmp_path/"fallback.pt";fallback.touch();recovery=tmp_path/"recovery.pt";recovery.touch()
+    camera=tmp_path/"camera.pt";camera.touch()
+    settings.fallback_detector_model_path=str(fallback);settings.recovery_detector_model_path=str(recovery);settings.camera_detector_model_path=str(camera)
+    settings.merge_fallback_fragments=True
+    captured={}
+    class StubPipeline:
+        def __init__(self,**kwargs):captured.update(kwargs)
+        def run(self,path):return {"detections":[],"ocr_results":[]}
+    monkeypatch.setattr(routes,"Pipeline",StubPipeline)
+    assert client.post(endpoint,files={"file":("source.png",png_bytes(),"image/png")}).status_code==200
+    assert captured["recovery_detector_path"]==recovery
+    assert captured["recovery_det_conf"]==.05
+    assert captured["recovery_layout_mode"]=="rectify_unfold_rows_v5"
+
+    assert captured["merge_fallback_fragments"] is True
+
+
+@pytest.mark.parametrize("raw,expected",[("false",False),("0",False),("off",False),("true",True),("1",True)])
+def test_fragment_env_bool_is_explicit(monkeypatch,raw,expected):
+    monkeypatch.setenv("FALLBACK_MERGE_FRAGMENTS",raw)
+    assert Settings.from_env().merge_fallback_fragments is expected
+
+
+def test_fragment_env_rejects_typo(monkeypatch):
+    monkeypatch.setenv("FALLBACK_MERGE_FRAGMENTS","flase")
+    with pytest.raises(ValueError,match="boolean"):
+        Settings.from_env()

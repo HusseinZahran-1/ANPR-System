@@ -5,11 +5,15 @@ source-to-output mapping in pixel-edge coordinates; the source is never edited.
 """
 from __future__ import annotations
 import cv2
+import math
 import numpy as np
 from PIL import Image
 
 
-def propose_two_row_cut(image):
+def propose_two_row_cut(image, *, minimum_x_ratio=.28, maximum_component_aspect=1.3):
+    if (not math.isfinite(minimum_x_ratio) or not 0 <= minimum_x_ratio < .5
+            or not math.isfinite(maximum_component_aspect) or not 1 <= maximum_component_aspect <= 3):
+        raise ValueError("invalid row geometry limits")
     width,height=image.size
     if height<32 or not 1.8 <= width/height < 3.2:
         return None
@@ -20,7 +24,7 @@ def propose_two_row_cut(image):
     _,_,stats,_=cv2.connectedComponentsWithStats(mask,connectivity=8)
     components=[]
     for x,y,w,h,area in stats[1:]:
-        if (x<.28*width or h<.18*height or h>.62*height or not .12<=w/h<=1.3
+        if (x<minimum_x_ratio*width or h<.18*height or h>.62*height or not .12<=w/h<=maximum_component_aspect
                 or area<.003*width*height or x+w>=width-inset):
             continue
         components.append([int(x),int(y),int(x+w),int(y+h)])

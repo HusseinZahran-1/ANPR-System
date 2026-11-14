@@ -2,7 +2,7 @@
 from PIL import Image
 
 SUPPORTED_LAYOUTS = ('none', 'unfold_v1', 'rectify_unfold_v2',
-                     'rectify_unfold_wide_v3', 'rectify_unfold_rows_v4')
+                     'rectify_unfold_wide_v3', 'rectify_unfold_rows_v4', 'rectify_unfold_rows_v5')
 
 
 def rectify_oblique_single_row(image: Image.Image,
@@ -62,6 +62,12 @@ def prepare_layout(image: Image.Image, mode: str = 'none') -> Image.Image:
     """
     if mode not in SUPPORTED_LAYOUTS:
         raise ValueError(f'unsupported OCR layout preprocessing: {mode}')
+    if mode == 'rectify_unfold_rows_v5':
+        from app.ocr.row_layout import propose_two_row_cut, unfold_at_cut
+        proposal = propose_two_row_cut(image, minimum_x_ratio=.15, maximum_component_aspect=2.)
+        if proposal is not None:
+            return unfold_at_cut(image, proposal['cut'])[0]
+        return prepare_layout(image, 'rectify_unfold_rows_v4')
     if mode == 'rectify_unfold_rows_v4':
         from app.ocr.row_layout import propose_two_row_cut, unfold_at_cut
         proposal = propose_two_row_cut(image)
@@ -69,7 +75,7 @@ def prepare_layout(image: Image.Image, mode: str = 'none') -> Image.Image:
             return unfold_at_cut(image, proposal['cut'])[0]
         return prepare_layout(image, 'rectify_unfold_wide_v3')
     max_aspect_ratio = 1.8 if mode == 'rectify_unfold_wide_v3' else 1.6
-    if mode in ('rectify_unfold_v2', 'rectify_unfold_wide_v3', 'rectify_unfold_rows_v4'):
+    if mode in ('rectify_unfold_v2', 'rectify_unfold_wide_v3', 'rectify_unfold_rows_v4', 'rectify_unfold_rows_v5'):
         rectified = rectify_oblique_single_row(image, max_aspect_ratio)
         if rectified is not None:
             return rectified

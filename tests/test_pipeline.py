@@ -246,3 +246,61 @@ def test_optional_fallback_preserves_threshold_provenance_and_forces_review(monk
     assert result["decisions"][0]["decision"]=="FLAG_REVIEW"
     assert result["decisions"][0]["country_verified"] is False
     assert result["decisions"][0]["requires_human_review"] is True
+
+
+@pytest.mark.parametrize("source",["primary","fallback","recovery"])
+def test_recovery_layout_is_scoped_to_its_detector_stage(monkeypatch,scene_path,source):
+    box={"box":[10,10,80,70],"det_conf":.08}
+    _install_stubs(monkeypatch,[box] if source=="primary" else [],ocr_text="1234567")
+    fallback=scene_path.with_name("fallback.pt");fallback.touch()
+    recovery=scene_path.with_name("recovery.pt");recovery.touch()
+    def detector(path,**kwargs):
+        stage="fallback" if str(path).endswith("fallback.pt") else "recovery"
+        return StubDetector([box] if source==stage else [])
+    monkeypatch.setattr(e2e,"PlateDetector",detector)
+    pipe=Pipeline(layout_mode="rectify_unfold_rows_v4",fallback_detector_path=fallback,recovery_detector_path=recovery)
+    used=[]
+    monkeypatch.setattr(pipe,"_ocr_crop_with_layout",lambda crop,mode:(used.append(mode) or "1234567",.9))
+    result=pipe.run(scene_path)
+    assert used==["rectify_unfold_rows_v5" if source=="recovery" else "rectify_unfold_rows_v4"]
+    assert pipe.ocr_layout_mode=="rectify_unfold_rows_v4"
+    assert result["meta"]["detector_source"]==source
+    assert result["meta"]["recovery_attempted"] is (source=="recovery")
+    if source=="recovery":
+        assert result["ocr_results"][0]["ocr_layout_mode"]=="rectify_unfold_rows_v5"
+        assert result["decisions"][0]["decision"]=="FLAG_REVIEW"
+
+
+@pytest.mark.parametrize("source,limit,enabled,expected", [
+    ("fallback",1,True,1),("recovery",1,True,1),
+    ("primary",1,True,2),("fallback",None,True,2),
+    ("fallback",2,True,2),("fallback",1,False,2),
+])
+def test_fragment_merge_is_limited_to_opt_in_single_plate_lower_stages(monkeypatch,scene_path,source,limit,enabled,expected):
+    boxes=[{"box":[10,10,70,30],"det_conf":.1}, {"box":[30,10,90,30],"det_conf":.08}]
+    if source!="primary":
+        boxes=[{**b,"detector_source":source} for b in boxes]
+    _install_stubs(monkeypatch,boxes)
+    pipe=Pipeline(max_plates=limit,merge_fallback_fragments=enabled)
+    assert len(pipe._detect(scene_path))==expected
+    result=pipe.run(scene_path)
+    assert result["meta"]["fragment_input_candidate_count"]==2
+    assert result["meta"]["detector_candidate_count"]==expected
+    assert result["meta"]["fragment_merge_applied"] is (expected==1)
+    if expected==1:
+        assert result["detections"][0]["fragment_boxes"]==[b["box"] for b in boxes]
+        assert result["decisions"][0]["decision"]=="FLAG_REVIEW"
+
+
+@pytest.mark.parametrize("text,code,number",[("1290001","12","90001"),("CD90001","CD","90001"),("190001",None,None)])
+def test_final_reading_exposes_plate_parts_without_rewriting_ocr(monkeypatch,scene_path,text,code,number):
+    _install_stubs(monkeypatch,[{"box":[10,10,80,70],"det_conf":.9}],ocr_text=text)
+    pipe=Pipeline()
+    monkeypatch.setattr(pipe,"_ocr_crop",lambda crop:(text,.9))
+    result=pipe.run(scene_path)
+    reading=result["ocr_results"][0]
+    assert reading["text"]==text
+    assert reading["plate_parts"]["full_text"]==text
+    assert reading["plate_parts"]["plate_code"]==code
+    assert reading["plate_parts"]["plate_number"]==number
+    assert result["decisions"][0]["country_verified"] is False

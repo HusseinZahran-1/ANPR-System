@@ -2,7 +2,7 @@
 
 Environment-driven configuration for the FastAPI service. Deliberately a plain
 :class:`dataclasses.dataclass` (no ``pydantic-settings`` dependency), per the
-Phase 12 brief and ``AI_DEVELOPMENT_PLAN.md`` Â§36.
+Phase 12 brief and ``AI_DEVELOPMENT_PLAN.md``, section 36.
 
 Every value can be overridden through an environment variable; the defaults
 mirror the owner-approved Phase 11 pipeline settings and the frozen model
@@ -76,6 +76,17 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
 def _env_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
@@ -85,7 +96,7 @@ def _env_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def default_device() -> str:
-    """Return ``"cuda"`` when a CUDA device is usable, else ``"cpu"`` (Â§37)."""
+    """Return ``cuda`` when a CUDA device is usable, otherwise ``cpu``."""
     try:
         import torch
 
@@ -108,6 +119,10 @@ class Settings:
     camera_detector_model_path: str = ""
     fallback_detector_model_path: str = ""
     fallback_detection_conf: float = .05
+    recovery_detector_model_path: str = ""
+    recovery_detection_conf: float = .05
+    merge_fallback_fragments: bool = False
+    recovery_ocr_layout_mode: str = "rectify_unfold_rows_v5"
     ocr_model_path: str = DEFAULT_OCR_PATH
     authority_model_path: str = ""
     authority_min_prefix_confidence: float = .8
@@ -132,6 +147,14 @@ class Settings:
             raise ValueError(f"OCR_LAYOUT_MODE must be one of {SUPPORTED_LAYOUTS}")
         if not 0 < self.fallback_detection_conf <= 1:
             raise ValueError("FALLBACK_DETECTION_CONF must be between zero and one")
+        if not isinstance(self.merge_fallback_fragments, bool):
+            raise ValueError("FALLBACK_MERGE_FRAGMENTS must be boolean")
+        if not 0 < self.recovery_detection_conf <= 1:
+            raise ValueError("RECOVERY_DETECTION_CONF must be between zero and one")
+        if self.recovery_ocr_layout_mode not in SUPPORTED_LAYOUTS:
+            raise ValueError("unsupported RECOVERY_OCR_LAYOUT_MODE")
+        if self.recovery_detector_model_path and not self.fallback_detector_model_path:
+            raise ValueError("RECOVERY_DETECTOR_PATH requires FALLBACK_DETECTOR_PATH")
         if self.detection_imgsz <= 0 or self.detection_imgsz % 32:
             raise ValueError("DETECTION_IMGSZ must be a positive multiple of 32")
         if not 0 < self.detection_nms_iou < 1:
@@ -148,6 +171,10 @@ class Settings:
             camera_detector_model_path=_env("CAMERA_DETECTOR_PATH", ""),
             fallback_detector_model_path=_env("FALLBACK_DETECTOR_PATH", ""),
             fallback_detection_conf=_env_float("FALLBACK_DETECTION_CONF", .05),
+            recovery_detector_model_path=_env("RECOVERY_DETECTOR_PATH", ""),
+            recovery_detection_conf=_env_float("RECOVERY_DETECTION_CONF", .05),
+            merge_fallback_fragments=_env_bool("FALLBACK_MERGE_FRAGMENTS", False),
+            recovery_ocr_layout_mode=_env("RECOVERY_OCR_LAYOUT_MODE", "rectify_unfold_rows_v5"),
             ocr_model_path=_env("MODEL_OCR_PATH", DEFAULT_OCR_PATH),
             authority_model_path=_env('AUTHORITY_REGION_MODEL_PATH',''),
             authority_min_prefix_confidence=_env_float('AUTHORITY_PREFIX_MIN_CONF',.8),
@@ -179,6 +206,10 @@ class Settings:
     @property
     def fallback_detector_path(self) -> Path | None:
         return resolve_path(self.fallback_detector_model_path) if self.fallback_detector_model_path else None
+
+    @property
+    def recovery_detector_path(self) -> Path | None:
+        return resolve_path(self.recovery_detector_model_path) if self.recovery_detector_model_path else None
 
     @property
     def ocr_path(self) -> Path:
