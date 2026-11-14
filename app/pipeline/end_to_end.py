@@ -1,7 +1,8 @@
 """Phase 11 - End-to-End plate pipeline (detector -> OCR -> validator -> policy).
 
 Wires together the frozen artifacts of earlier phases, using **saved models
-only** (no training, no fine-tuning, no new dependency):
+only** (no runtime training or fine-tuning). An optional, separately installed
+English prefix reader supports visual CD/SN evidence:
 
     full scene image
       -> YOLOv8n detector           (models/phase6_detector/.../weights/best.pt)
@@ -17,7 +18,8 @@ The CRNN architecture and the greedy CTC decoder live in the application layer
 so the inference path is the same model Phase 8 trained and evaluated, while the
 pipeline no longer imports training code through ``sys.path`` manipulation. The
 detector is accessed through :class:`app.detector.PlateDetector`. Only ``best.pt``
-is used for both models (single-baseline discipline, owner-approved).
+is used for the detector and primary OCR; optional prefix weights are verified
+separately. Region readings retain their original OCR evidence and require review.
 
 Confidence handling (DESIGN section D): three separate values are exposed and
 **never fused** -- detector confidence, OCR confidence, and the rule-based
@@ -36,6 +38,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+import math
 
 import numpy as np
 import torch
@@ -44,8 +47,13 @@ from app.ocr.layout import SUPPORTED_LAYOUTS, prepare_layout
 
 # Application-layer modules (no sys.path manipulation, no training-script import).
 from app.detector import DEFAULT_CONF, DEFAULT_IOU, PlateDetector
+from app.detector.cascade import PrimaryFirstDetector
+from app.detector.fragments import merge_plate_fragments
+from app.validator.plate_parts import split_plate_text
 from app.ocr import conv_out_width, greedy_decode, load_crnn_checkpoint
 from app.ocr.authority_review import possible_authority_text
+from app.ocr.authority_regions import AuthorityRegionReader,load_prefix_reader
+from app.ocr.spatial import vgg_ctc_tokens
 from app.pipeline.io import (
     crop_from_box,
     load_scene,
@@ -146,11 +154,40 @@ class Pipeline:
                  det_conf: float = DEFAULT_CONF, imgsz: int = DEFAULT_IMGSZ,
                  nms_iou: float = DEFAULT_IOU, device=None,
                  crop_pad_pct: float = 0.0, layout_mode: str | None = None,
-                 max_plates: int | None = None):
+                 max_plates: int | None = None,
+                 authority_model_path: str | Path | None = None,
+                 authority_min_prefix_confidence: float = .8,
+                 fallback_detector_path: str | Path | None = None,
+                 fallback_det_conf: float = .05,
+                 recovery_detector_path: str | Path | None = None,
+                 recovery_det_conf: float = .05,
+                 recovery_layout_mode: str = 'rectify_unfold_rows_v5',
+                 merge_fallback_fragments: bool = False):
         torch.manual_seed(SEED)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+        if not isinstance(merge_fallback_fragments, bool):
+            raise ValueError("merge_fallback_fragments must be boolean")
+        self.merge_fallback_fragments = merge_fallback_fragments
+        self.fallback_det_conf = float(fallback_det_conf)
+        if not math.isfinite(self.fallback_det_conf) or not 0 < self.fallback_det_conf <= 1:
+            raise ValueError("fallback detection confidence must be between zero and one")
+        self.fallback_detector_path = str(Path(fallback_detector_path).resolve()) if fallback_detector_path is not None else None
+        if self.fallback_detector_path and not Path(self.fallback_detector_path).is_file():
+            raise FileNotFoundError("configured fallback detector model is missing")
+        self.recovery_detector_path = str(Path(recovery_detector_path).resolve()) if recovery_detector_path is not None else None
+        self.recovery_det_conf = float(recovery_det_conf)
+        self.recovery_layout_mode = recovery_layout_mode
+        if not math.isfinite(self.recovery_det_conf) or not 0 < self.recovery_det_conf <= 1:
+            raise ValueError("recovery detection confidence must be between zero and one")
+        if self.recovery_layout_mode not in SUPPORTED_LAYOUTS:
+            raise ValueError("unsupported recovery OCR layout")
+        if self.recovery_detector_path:
+            if not self.fallback_detector_path:
+                raise ValueError("recovery detector requires a configured fallback detector")
+            if not Path(self.recovery_detector_path).is_file():
+                raise FileNotFoundError("configured recovery detector model is missing")
         self.det_conf = float(det_conf)
         self.imgsz = int(imgsz)
         self.nms_iou = float(nms_iou)
@@ -180,6 +217,19 @@ class Pipeline:
         self.device = loaded["device"]
         self.detector_path = str(Path(detector_path))
         self.ocr_path = str(Path(ocr_path))
+        if self.fallback_detector_path is not None:
+            fallback = PlateDetector(self.fallback_detector_path, device=self.device,
+                                     imgsz=self.imgsz, conf=self.fallback_det_conf, iou=self.nms_iou)
+            self.detector = PrimaryFirstDetector(self.detector, fallback)
+        if self.recovery_detector_path is not None:
+            recovery = PlateDetector(self.recovery_detector_path, device=self.device,
+                                     imgsz=self.imgsz, conf=self.recovery_det_conf, iou=self.nms_iou)
+            self.detector = PrimaryFirstDetector(self.detector, recovery, fallback_source="recovery")
+        self.authority_reader = None
+        if authority_model_path is not None:
+            prefix_reader = load_prefix_reader(str(Path(authority_model_path).resolve()),str(self.device))
+            self.authority_reader = AuthorityRegionReader(prefix_reader,self._ocr_spatial_tokens,
+                                                          min_prefix_confidence=authority_min_prefix_confidence)
 
     # ------------------------------------------------------------------ #
     def _detect(self, image_path) -> list[dict]:
@@ -189,13 +239,21 @@ class Pipeline:
         (not a numpy array) to Ultralytics so the byte-level preprocessing is
         identical to Phase 6's evaluation.
         """
-        return self.detector.detect(image_path)
+        detections = self.detector.detect(image_path)
+        if (self.merge_fallback_fragments and self.max_plates == 1 and detections
+                and detections[0].get("detector_source") in ("fallback", "recovery")):
+            return merge_plate_fragments(detections)
+        return detections
 
     def _ocr_crop(self, crop_rgb: np.ndarray) -> tuple[str, float]:
         """Greedy-decode one crop; returns (text, ocr_conf)."""
+        return self._ocr_crop_with_layout(crop_rgb, self.ocr_layout_mode)
+
+    def _ocr_crop_with_layout(self, crop_rgb: np.ndarray, layout_mode: str) -> tuple[str, float]:
+        """Read one explicitly versioned layout without changing shared settings."""
         if crop_rgb.size == 0 or crop_rgb.shape[0] < 1 or crop_rgb.shape[1] < 1:
             return "", 0.0
-        crop_rgb = np.array(prepare_layout(Image.fromarray(crop_rgb), self.ocr_layout_mode))
+        crop_rgb = np.array(prepare_layout(Image.fromarray(crop_rgb), layout_mode))
         tensor = preprocess_for_ocr(crop_rgb, target_h=self.ocr_h,
                                     max_w=self.ocr_wmax,
                                     min_resized_w=self.ocr_min_width,
@@ -210,12 +268,36 @@ class Pipeline:
         text, conf = greedy_decode(logits[0, :valid_steps].cpu())
         return text, round(float(conf), 6)
 
+    def _ocr_spatial_tokens(self,plate_rgb: np.ndarray) -> list[dict]:
+        """Read an explicitly localized single-row plate view without unfolding."""
+        height,width = plate_rgb.shape[:2]
+        resized = max(self.ocr_min_width,min(round(self.ocr_h*width/height),self.ocr_wmax))
+        tensor = preprocess_for_ocr(plate_rgb,target_h=self.ocr_h,max_w=self.ocr_wmax,
+                                    min_resized_w=self.ocr_min_width,pad_to_max_width=self.ocr_pad_to_max_width)
+        with torch.no_grad():
+            logits = self.ocr(tensor.to(self.device))[0,:conv_out_width(resized)]
+        return vgg_ctc_tokens(logits,self.alphabet,source_width=width,resized_width=resized)
+
+    def _recognize_crop(self,crop: np.ndarray, *, layout_mode: str | None = None) -> dict:
+        text,confidence = self._ocr_crop(crop) if layout_mode is None else self._ocr_crop_with_layout(crop, layout_mode)
+        entry = {'text':text,'ocr_conf':confidence}
+        if layout_mode is not None:
+            entry['ocr_layout_mode'] = layout_mode
+        if self.authority_reader is not None:
+            region = self.authority_reader.read(Image.fromarray(crop))
+            if region is not None:
+                entry.update(text=region['text'],primary_ocr_text=text,authority_region=region,
+                             ocr_confidence_scope='primary_reading_before_region_ocr')
+        return entry
+
     # ------------------------------------------------------------------ #
     def run(self, image_path) -> dict:
         """Full pipeline for ONE scene. Returns the structured result dict."""
         scene = load_scene(image_path)
         detections = self._detect(image_path)
         candidate_count = len(detections)
+        fragment_input_count = sum(det.get("merged_fragment_count", 1) for det in detections)
+        fragment_merge_applied = any(det.get("merged_fragment_count", 1) > 1 for det in detections)
         if self.max_plates is not None:
             detections = sorted(detections, key=lambda det: det["det_conf"],
                                 reverse=True)[:self.max_plates]
@@ -231,6 +313,7 @@ class Pipeline:
             except ValueError:
                 # Degenerate box (e.g. fully outside bounds): record no text.
                 ocr_results.append({"crop_box": box, "text": "", "ocr_conf": 0.0,
+                                    "plate_parts": split_plate_text(""),
                                     "crop_error": "empty crop after clipping"})
                 v = validate("")
                 validations.append({"text": "", **v})
@@ -238,8 +321,13 @@ class Pipeline:
                     v["classification"], v["matched_rule"], v["normalized"])))
                 continue
 
-            text, conf = self._ocr_crop(crop)
-            ocr_entry = {"crop_box": box, "text": text, "ocr_conf": conf}
+            if det.get('detector_source') == 'recovery':
+                reading = self._recognize_crop(crop, layout_mode=self.recovery_layout_mode)
+            else:
+                reading = self._recognize_crop(crop)
+            ocr_entry = {"crop_box": box, **reading}
+            text = ocr_entry['text']
+            ocr_entry['plate_parts'] = split_plate_text(text)
             suggestion = possible_authority_text(text)
             if suggestion:
                 ocr_entry["possible_authority_text"] = suggestion
@@ -248,13 +336,17 @@ class Pipeline:
 
             v = validate(text)
             validations.append({"text": text, **v})
-            decisions.append(_review_required(decide(
-                v["classification"], v["matched_rule"], v["normalized"])))
+            decision = _review_required(decide(v["classification"],v["matched_rule"],v["normalized"]))
+            if 'authority_region' in ocr_entry:
+                decision.update(decision='FLAG_REVIEW',reason='separate prefix and number reading; verify image and country')
+            if det.get('detector_source') in ('fallback', 'recovery'):
+                decision.update(decision='FLAG_REVIEW',reason='secondary detector reading; verify image and country')
+            decisions.append(decision)
 
         if not detections:
             decisions.append({
                 "decision": "FLAG_REVIEW",
-                "reason": f"no plate detected above threshold {self.det_conf:g}",
+                "reason": "no plate detected by the configured detectors" if self.fallback_detector_path else f"no plate detected above threshold {self.det_conf:g}",
                 "matched_rule": None,
                 "speculative": False,
                 "country_verified": False,
@@ -274,13 +366,25 @@ class Pipeline:
                 "country_verified": False,
                 "requires_human_review": True,
                 "det_conf_threshold": self.det_conf,
+                "detector_source": detections[0].get("detector_source", "primary") if detections else None,
+                "fallback_detector": self.fallback_detector_path,
+                "fallback_det_conf_threshold": self.fallback_det_conf if self.fallback_detector_path else None,
+                "fallback_attempted": bool(self.fallback_detector_path) and (not detections or detections[0].get("detector_source") in ("fallback", "recovery")),
+                "recovery_detector": self.recovery_detector_path,
+                "recovery_det_conf_threshold": self.recovery_det_conf if self.recovery_detector_path else None,
+                "recovery_ocr_layout_mode": self.recovery_layout_mode if self.recovery_detector_path else None,
+                "recovery_attempted": bool(self.recovery_detector_path) and (not detections or detections[0].get("detector_source") == "recovery"),
                 "det_nms_iou": self.nms_iou,
                 "max_plates": self.max_plates,
                 "detector_candidate_count": candidate_count,
+                "fragment_input_candidate_count": fragment_input_count,
+                "fragment_merge_applied": fragment_merge_applied,
+                "merge_fallback_fragments": self.merge_fallback_fragments,
                 "imgsz": self.imgsz,
                 "ocr_min_resized_w": self.ocr_min_width,
                 "ocr_pad_to_max_width": self.ocr_pad_to_max_width,
                 "ocr_layout_mode": self.ocr_layout_mode,
+                "authority_region_ocr": self.authority_reader is not None,
                 "crop_pad_pct": self.crop_pad_pct,
                 "device": str(self.device),
                 "seed": SEED,

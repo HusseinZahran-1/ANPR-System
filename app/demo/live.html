@@ -56,7 +56,27 @@ function headers(){return {'X-Camera-Key':key.value.trim()};}
 async function jsonResponse(response){const data=await response.json().catch(()=>({}));if(!response.ok){const error=Error(data.detail||`Request failed (${response.status})`);error.status=response.status;throw error}return data;}
 function plateText(event){return event.result?.ocr_results?.[0]?.text||'Unreadable';}
 function addText(parent,tag,value,className){const element=document.createElement(tag);element.textContent=value;if(className)element.className=className;parent.appendChild(element);return element;}
-function showAnalysis(event){analysis.replaceChildren();addText(analysis,'div',plateText(event),'num');const d=event.result?.decisions?.[0];addText(analysis,'div',d?.decision==='ACCEPT_JORDANIAN'?'Jordanian format match · verify country':'Needs review','pill');const suggestion=event.result?.ocr_results?.[0]?.possible_authority_text;if(suggestion)addText(analysis,'div',`Possible authority code: ${suggestion} · check the image before confirming.`,'detail');const det=event.result?.detections?.[0];addText(analysis,'div',`Camera: ${event.camera_id}`,'detail');addText(analysis,'div',`Captured: ${new Date(event.captured_at).toLocaleString()}`,'detail');addText(analysis,'div',`Detector signal: ${det?Math.round(det.det_conf*100)+'%':'No plate found'}`,'detail');const extra=Math.max(0,(event.result?.meta?.detector_candidate_count||0)-(event.result?.detections?.length||0));if(extra)addText(analysis,'div',`${extra} additional candidate${extra===1?'':'s'} excluded by single-plate mode.`,'detail');addText(analysis,'div','Human review required before use.','detail');}
+function showAnalysis(event){
+  analysis.replaceChildren();addText(analysis,'div',plateText(event),'num');
+  const d=event.result?.decisions?.[0],ocr=event.result?.ocr_results?.[0];
+  addText(analysis,'div',d?.decision==='ACCEPT_JORDANIAN'?'Jordanian format match · verify country':'Needs review','pill');
+  const parts=ocr?.plate_parts;
+  if(parts)addText(analysis,'div',`Plate code: ${parts.plate_code??'Unresolved'} · Plate number: ${parts.plate_number??'Unresolved'}`,'detail');
+  const suggestion=ocr?.possible_authority_text;
+  if(suggestion)addText(analysis,'div',`Possible authority code: ${suggestion} · check the image before confirming.`,'detail');
+  if(ocr?.authority_region){
+    addText(analysis,'div',`Prefix: ${ocr.authority_region.prefix_text} · Number: ${ocr.authority_region.numeric_suffix}`,'detail');
+    addText(analysis,'div',`Original read: ${ocr.primary_ocr_text||'Unreadable'}`,'detail');
+    addText(analysis,'div','Check both parts against the image.','detail');
+  }
+  const det=event.result?.detections?.[0];
+  addText(analysis,'div',`Camera: ${event.camera_id}`,'detail');
+  addText(analysis,'div',`Captured: ${new Date(event.captured_at).toLocaleString()}`,'detail');
+  addText(analysis,'div',`Detector signal: ${det?Math.round(det.det_conf*100)+'%':'No plate found'}`,'detail');
+  const extra=Math.max(0,(event.result?.meta?.detector_candidate_count||0)-(event.result?.detections?.length||0));
+  if(extra)addText(analysis,'div',`${extra} additional candidate${extra===1?'':'s'} excluded by single-plate mode.`,'detail');
+  addText(analysis,'div','Human review required before use.','detail');
+}
 function selectReview(event,img){
   selectedEvent=event;reviewDirty=false;
   const preview=document.createElement('canvas');preview.width=img.naturalWidth;preview.height=img.naturalHeight;
