@@ -7,12 +7,15 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 
 from app.api.config import get_settings
 from app.api.routes import analyze_upload
-from app.camera.archive import complete_capture, recent_records, save_capture, stored_capture
+from app.camera.archive import complete_capture, save_capture_export, recent_records, save_capture, stored_capture
 from app.camera.events import events
 from app.camera.reviews import ReviewPayload, save_review
+from app.validator.plate_parts import split_plate_text
+from app.vehicle import Vehicle, select_primary_vehicle
 
 router = APIRouter(prefix="/camera", tags=["camera"])
 
@@ -48,6 +51,7 @@ async def receive_camera_image(
                             camera_id=camera_id, original_filename=filename)
     try:
         result = await analyze_upload(file, camera=True)
+        result["export"] = await run_in_threadpool(save_capture_export, archived, image, result)
     except Exception as exc:
         complete_capture(archived, error=exc)
         raise
@@ -69,8 +73,25 @@ def list_camera_events(limit: int = 10, x_camera_key: str | None = Header(None))
             "camera_id": record["camera_id"], "filename": record["original_filename"],
             "result": record["result"],
         }
-    return {"events": sorted(visible.values(), key=lambda item: item["captured_at"],
-                             reverse=True)[:limit]}
+    latest = sorted(visible.values(), key=lambda item: item["captured_at"], reverse=True)[:limit]
+    for index, event in enumerate(latest):
+        result = event["result"]
+        readings = result.get("ocr_results", [])
+        if any(reading.get("plate_parts") is None for reading in readings):
+            # Derive the display fields from the saved OCR without editing the archive.
+            readings = [
+                {**reading, "plate_parts": split_plate_text(reading.get("text", ""))}
+                if reading.get("plate_parts") is None else reading
+                for reading in readings
+            ]
+            result = {**result, "ocr_results": readings}
+        vehicles = result.get("vehicles") or []
+        if len(vehicles) > 1:
+            primary = select_primary_vehicle([Vehicle.model_validate(vehicle) for vehicle in vehicles])
+            result = {**result, "vehicles": [primary.model_dump(mode="json")]}
+        if result is not event["result"]:
+            latest[index] = {**event, "result": result}
+    return {"events": latest}
 
 
 @router.get("/events/{event_id}/image")

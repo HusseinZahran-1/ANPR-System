@@ -62,3 +62,47 @@ are excluded. This is not throughput, a multi-scene benchmark or a latency SLA.
 Original raw data and held-out test pixels are unchanged/unopened. For stage
 configuration and limitations, see [recovery and fragments](RECOVERY_AND_FRAGMENTS.md)
 and [plate-parts semantics](PLATE_PARTS.md).
+
+## Relocation replay on RTX 5090
+
+The prior deployed gate profile and the recovery-plus-fragment candidate were
+rerun on the same 20 reused external development images. At IoU 0.50, before
+the single-plate output cap:
+
+| Measure | Prior gate | Recovery and fragment geometry |
+| --- | ---: | ---: |
+| Full reading with a localization hit | 8/20 | 12/20 |
+| End-to-end CER | 69/140 (49.3%) | 51/140 (36.4%) |
+| Raw TP / FP / FN | 11 / 3 / 9 | 13 / 3 / 7 |
+| Post-geometry TP / FP / FN | 11 / 3 / 9 | 13 / 1 / 7 |
+| Post-geometry precision / recall / F1 | 78.6% / 55.0% / 64.7% | 92.9% / 65.0% / 76.5% |
+
+Each configuration had zero duplicate boxes by the matching definition and
+left all 20 derived background crops empty. The camera replay remained
+112/113 exact with 1/754 character edits and 4/5 no-plate views empty for
+both configurations. The camera cohort includes 98 readable views with OCR
+training identities. Older scene replay remained 67/80 exact against its
+historical reference. The visual authority reader changed exact readings
+from 0/5 to 5/5 on five reused views of three plates. Foreign text format
+matches remained 8/9.
+
+Standalone validation of the Phase 80 snapshots on the same 20 positives
+used 1280-pixel inference, confidence 0.001, NMS IoU 0.50 and max 300 boxes.
+Best achieved 88.7% mAP50 and 42.2% mAP50–95. Last achieved 86.4% and
+39.1%, respectively. The two earlier camera-focused primaries had zero
+matched detections under this standalone external validation. These APs
+describe individual checkpoints on a small positive-only development cohort.
+Composed-system mAP was not evaluated.
+
+Warm median inference times in milliseconds, after three warm-ups and eight
+measured passes per profile per image:
+
+| Reused image | Prior gate | Recovery and fragment geometry |
+| --- | ---: | ---: |
+| Camera positive | 54.69 | 54.93 |
+| Recovery positive | 20.19 | 39.53 |
+| Fragment positive | 30.96 | 31.03 |
+
+Independent vehicle-grouped accuracy, visual code-boundary accuracy,
+multi-vehicle fragment behavior, and country false rejection still need
+dedicated reviewed cohorts.

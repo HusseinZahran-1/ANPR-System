@@ -3,8 +3,8 @@
 Each final `ocr_results` entry now includes `plate_parts` in the manual demo,
 general prediction and camera ingestion. Existing `text` remains unchanged.
 Both the demo and live view display the separate code and number. Archived
-older events without these fields continue to display their original reading;
-they are not reprocessed or rewritten automatically.
+older events without these fields derive them from the saved OCR text when
+the live history is requested. The original archive remains intact.
 
 ```json
 {
@@ -30,8 +30,9 @@ use the project's two-digit-code/five-digit-number assumption, exposed as
 `numeric_2_plus_5_assumption`. This is inferred formatting metadata, not a
 separate visual prediction, calibrated confidence or verification of country.
 Unseparated numeric readings with ambiguous boundaries return null code and
-number with `split_basis=unresolved`; the UI displays `Unresolved`. Empty and
-unsupported readings do likewise. Six digits are not blindly split into 2+4
+number with `split_basis=unresolved`. For six digits, the UI shows both
+possible groupings below the fields for visual review. Empty and unsupported
+readings still display `Unresolved`. Six digits are not blindly split into 2+4
 because 1+5 is also possible. A future visual boundary reader needs reviewed
 code/number labels and independent evaluation.
 
