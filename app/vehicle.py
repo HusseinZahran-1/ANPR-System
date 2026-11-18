@@ -9,26 +9,16 @@ from pathlib import Path
 from typing import Literal
 
 from PIL import Image, ImageOps
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.pipeline.io import crop_from_box, load_scene
-from app.vehicle_attributes import PaintAndBody
+from app.vehicle_attributes import PaintColor
 
 logger = logging.getLogger(__name__)
 
 VehicleStatus = Literal["disabled", "detection_only", "ready", "unavailable", "unassociated"]
 Box = tuple[int, int, int, int]
 COCO_VEHICLES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
-BODY_STYLES = {
-    "SUV": ("an SUV", "a sport utility vehicle"),
-    "Sedan": ("a sedan", "a four-door sedan with a separate trunk"),
-    "Hatchback": ("a hatchback", "a compact hatchback car"),
-    "Pickup": ("a pickup truck", "a pickup with an open cargo bed"),
-    "Van": ("a van", "a minivan or cargo van"),
-    "Wagon": ("a station wagon", "an estate car"),
-    "Coupe": ("a coupe", "a two-door coupe"),
-    "Truck": ("a heavy truck", "a commercial lorry"),
-}
 COLORS = ("Black", "White", "Silver", "Gray", "Red", "Blue", "Green", "Brown",
           "Beige", "Yellow", "Orange", "Purple")
 CAR_MAKES = ("BMW", "Mercedes-Benz", "Toyota", "Hyundai", "Kia", "Nissan", "Honda",
@@ -50,6 +40,14 @@ class Vehicle(BaseModel):
     attribute_sources: dict[str, str] = Field(default_factory=dict)
     plate_indices: list[int] = Field(default_factory=list)
     requires_human_review: bool = True
+
+
+    @model_validator(mode="after")
+    def normalize_vehicle_type(self) -> Vehicle:
+        self.vehicle_type = self.detection_class.title()
+        self.attribute_sources = {key: value for key, value in self.attribute_sources.items()
+                                  if key in {"color", "make"}}
+        return self
 
 
 def _assign_plates(vehicles: list[Vehicle], plates: list[dict]) -> None:
@@ -86,7 +84,7 @@ def select_primary_vehicle(vehicles: list[Vehicle]) -> Vehicle | None:
 class VehicleAttributes:
     """Rank a fixed label set with OpenAI CLIP ViT-B/32 on detected crops."""
 
-    def __init__(self, checkpoint: Path, device: str, structured: PaintAndBody | None = None) -> None:
+    def __init__(self, checkpoint: Path, device: str, structured: PaintColor | None = None) -> None:
         import clip
         import torch
         from torch.nn.functional import normalize
@@ -108,9 +106,6 @@ class VehicleAttributes:
         descriptive_prompts = {
             name: {label: [template.format(label) for template in templates] for label in labels}
             for name, (labels, templates) in labels_and_prompts.items()
-        }
-        descriptive_prompts["type"] = {
-            label: [f"a photo of {phrase}" for phrase in phrases] for label, phrases in BODY_STYLES.items()
         }
         with torch.inference_mode():
             for name, descriptions in descriptive_prompts.items():
@@ -166,7 +161,7 @@ class VehicleAttributes:
 
         if kind in ("car", "truck") and self.structured:
             try:
-                supervised_color, category = self.structured.classify(crop, inset, kind)
+                supervised_color = self.structured.classify(crop, inset)
             except Exception:
                 logger.exception("Supervised vehicle attribute inference failed")
             else:
@@ -177,15 +172,6 @@ class VehicleAttributes:
                 ):
                     vehicle.color = supervised_color
                     vehicle.attribute_sources["color"] = "paddleclas_with_clip"
-                if category:
-                    vehicle.vehicle_type = category
-                    vehicle.attribute_sources["category"] = "paddleclas_multiview"
-        elif kind in ("car", "truck"):
-            category = self._agree(self._votes(features, "type"), minimum=0.22, margin=0.012, required=3)
-            if category and not (kind == "car" and category == "Truck"):
-                vehicle.vehicle_type = category
-                vehicle.attribute_sources["category"] = "clip_multiview"
-
         if min(height, width) >= 80 and kind != "bus":
             bank = "motorcycle_make" if kind == "motorcycle" else "car_make"
             votes = self._votes(features, bank)
@@ -260,7 +246,7 @@ def _load_analyzer(detector: Path, attributes: Path | None, device: str,
             structured = None
             if structured_model is not None:
                 try:
-                    structured = PaintAndBody(structured_model)
+                    structured = PaintColor(structured_model)
                 except Exception:
                     logger.exception("Supervised vehicle model unavailable")
             analyzer.attributes = VehicleAttributes(attributes, device, structured)

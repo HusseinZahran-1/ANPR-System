@@ -103,8 +103,10 @@ def camera_destination(settings: Settings, preferences: CameraPreferences | None
     transport = preferences.transport or settings.camera_public_transport
     bridge = f"/camera/bridge/{preferences.bridge_alias}" if preferences.bridge_alias else DEFAULT_BRIDGE
     authority = f"[{host}]" if ":" in host else host
+    origin = f"{transport.lower()}://{authority}:{port}" if host else None
     return {"host": host, "port": port, "transport": transport, "bridge_path": bridge,
-            "bridge_url": f"{transport.lower()}://{authority}:{port}{bridge}" if host else None}
+            "bridge_url": origin + bridge if origin else None,
+            "canonical_url": origin + DEFAULT_BRIDGE if origin else None}
 
 
 def _require_admin(key: str | None = Security(_admin_header)) -> None:

@@ -2,7 +2,14 @@
 
 The FastAPI server hosts the company workspace on the configured LAN listener.
 Open `/` for service status and navigation to image analysis, live captures,
-the integration API console and camera settings.
+the integration API console and camera settings. The workspace and live view
+keep the fixed camera upload URL visible. A configured alternate bridge URL
+appears separately in the authenticated live view.
+
+The live dashboard remembers a sign-in for up to 30 days using an HTTP-only
+browser cookie. Choose **Disconnect** to clear the session on that browser.
+Changing the camera key requires current viewers to sign in again. Hardware
+camera and bridge uploads continue to authenticate with their existing methods.
 
 ## Operator settings
 

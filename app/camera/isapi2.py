@@ -25,7 +25,8 @@ from app.api.config import get_settings
 from app.api.routes import analyze_upload
 from app.camera.archive import complete_capture, save_capture_export, save_capture
 from app.camera.events import events
-from app.camera.settings import authorize_camera_key, camera_destination
+from app.camera.settings import camera_destination
+from app.camera.viewer import authorize_viewer
 
 router = APIRouter(prefix="/camera/isapi2", tags=["camera"])
 _diagnostic_lock = threading.Lock()
@@ -135,18 +136,18 @@ async def receive_isapi2(request: Request, token: str) -> dict:
 
 
 @router.get("/status/last")
-def last_isapi2_packet(x_camera_key: str | None = Header(None)) -> dict:
+def last_isapi2_packet(request: Request, x_camera_key: str | None = Header(None)) -> dict:
     """Expose image-free packet diagnostics to the authenticated live viewer."""
-    authorize_camera_key(x_camera_key, get_settings())
+    authorize_viewer(request, x_camera_key, get_settings())
     with _diagnostic_lock:
         return dict(_last_packet)
 
 
 @router.get("/config")
-def isapi2_setup(response: Response, x_camera_key: str | None = Header(None)) -> dict:
+def isapi2_setup(request: Request, response: Response, x_camera_key: str | None = Header(None)) -> dict:
     """Give an authenticated operator the exact camera-side settings."""
     settings = get_settings()
-    authorize_camera_key(x_camera_key, settings)
+    authorize_viewer(request, x_camera_key, settings)
     if not settings.camera_isapi_token:
         raise HTTPException(status_code=503, detail="CAMERA_ISAPI_TOKEN is not configured")
     destination = camera_destination(settings)

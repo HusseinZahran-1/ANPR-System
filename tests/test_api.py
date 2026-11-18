@@ -400,8 +400,8 @@ def test_demo_saves_original_and_matching_xml(api, monkeypatch, tmp_path):
     directory = tmp_path / "exports" / saved["folder"]
     image = directory / saved["image_filename"]
     xml = directory / saved["xml_filename"]
-    assert image.name == "ANPR_1200345_Black_Mercedes-Benz_Car-SUV.png"
-    assert xml.name == "ANPR_1200345_Black_Mercedes-Benz_Car-SUV.xml"
+    assert image.name == "ANPR_1200345_Black_Mercedes-Benz_Car.png"
+    assert xml.name == "ANPR_1200345_Black_Mercedes-Benz_Car.xml"
     assert image.read_bytes() == content
     root = ElementTree.parse(xml).getroot()
     assert root.find("image").attrib["filename"] == image.name
@@ -409,7 +409,7 @@ def test_demo_saves_original_and_matching_xml(api, monkeypatch, tmp_path):
     assert root.findtext("source") == "upload"
     assert root.find("export").get("folder") == saved["folder"]
     assert root.findtext("./vehicles/vehicle/vehicle_type") == "Car"
-    assert root.findtext("./vehicles/vehicle/vehicle_category") == "SUV"
+    assert root.find("./vehicles/vehicle/vehicle_category") is None
     assert root.findtext("./vehicles/vehicle/color") == "Black"
     assert root.findtext("./vehicles/vehicle/make") == "Mercedes-Benz"
     assert set(directory.iterdir()) == {image, xml}
@@ -502,3 +502,39 @@ def test_camera_settings_persist_alias_and_replace_camera_key(api, monkeypatch):
     assert client.get("/camera/events", headers=initial_headers).status_code == 401
     assert client.get("/camera/events", headers={"X-Camera-Key": new_key}).is_success
     assert new_key.encode() not in camera_settings._path().read_bytes()
+
+
+def test_remembered_viewer_is_scoped_and_ends_after_camera_key_rotation(api, monkeypatch):
+    from app.camera import routes as camera_routes
+    from app.camera import settings as camera_settings
+
+    client, settings = api
+    settings.site_admin_key = "site-admin-test"
+    settings.camera_api_key = "camera-viewer-test-secret"
+    monkeypatch.setattr(camera_routes, "get_settings", lambda: settings)
+    monkeypatch.setattr(camera_settings, "get_settings", lambda: settings)
+    monkeypatch.setattr(camera_routes, "recent_records", lambda limit: [])
+    viewer = {"X-Camera-Viewer": "1"}
+    camera = {"X-Camera-Key": settings.camera_api_key}
+    admin = {"X-Site-Admin-Key": settings.site_admin_key}
+
+    assert not client.get("/camera/viewer/session", headers=viewer).json()["connected"]
+    assert client.post("/camera/viewer/session", headers=viewer).status_code == 401
+    signed_in = client.post("/camera/viewer/session", headers=camera)
+    assert signed_in.status_code == 204
+    cookie = signed_in.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=strict" in cookie
+    assert settings.camera_api_key.lower() not in cookie
+    assert client.get("/camera/viewer/session", headers=viewer).json()["connected"]
+    assert client.get("/camera/events", headers=viewer).is_success
+    assert client.get("/camera/events").status_code == 401
+    assert client.post("/camera/events", headers=viewer,
+                       files={"file": ("x.png", png_bytes(), "image/png")}).status_code == 401
+
+    assert client.delete("/camera/viewer/session", headers=viewer).status_code == 204
+    assert not client.get("/camera/viewer/session", headers=viewer).json()["connected"]
+    assert client.post("/camera/viewer/session", headers=camera).status_code == 204
+    assert client.put("/ops/camera-settings", headers=admin,
+                      json={"camera_key": "rotated-camera-key-test"}).is_success
+    assert not client.get("/camera/viewer/session", headers=viewer).json()["connected"]
+    assert client.get("/camera/events", headers=viewer).status_code == 401

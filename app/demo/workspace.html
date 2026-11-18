@@ -16,6 +16,11 @@
     <h1>Operations workspace</h1>
     <p id="service-status" role="status">Checking recognition service…</p>
   </header>
+  <section class="panel camera-endpoint-card">
+    <h2>Camera API</h2>
+    <label>Fixed upload URL<input id="fixed-camera-url" value="/camera/events" readonly></label>
+    <p class="muted">Authentication header <code>X-Camera-Key</code> · <a href="/settings">Edit camera settings</a></p>
+  </section>
   <div class="panel-grid">
     <section class="panel"><h2><a href="/demo">Image analysis</a></h2>
       <p class="muted">Upload a scene and review the plate, vehicle and saved XML report.</p></section>
@@ -28,6 +33,7 @@
   </div>
 </main>
 <script>
+document.getElementById('fixed-camera-url').value = new URL('/camera/events', location.href).href;
 const statusText = document.getElementById('service-status');
 fetch('/health', {cache: 'no-store'}).then(async response => {
   const data = await response.json();

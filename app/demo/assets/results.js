@@ -59,11 +59,8 @@
       card.append(element('div', `Primary vehicle${association}`, 'vehicle-note'));
       const broad = vehicle.detection_class || '';
       const type = broad ? broad[0].toUpperCase() + broad.slice(1) : 'Unknown';
-      const category = vehicle.vehicle_type === type && ['Car', 'Truck'].includes(type)
-        ? 'Unknown' : (vehicle.vehicle_type || 'Unknown');
       card.append(fields([
         ['Vehicle type', type, 'vehicle-type'],
-        ['Vehicle category', category, 'vehicle-category'],
         ['Vehicle color', vehicle.color ?? 'Unknown', 'vehicle-color'],
         ['Make', vehicle.make ?? 'Unknown', 'vehicle-make'],
       ]));

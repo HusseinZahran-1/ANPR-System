@@ -92,14 +92,12 @@ def test_plate_without_a_vehicle_match_does_not_use_the_background():
     assert status == "unassociated"
 
 
-def test_supervised_category_requires_two_compatible_views():
+def test_supervised_color_requires_two_consistent_views():
     import numpy as np
-    from app.vehicle_attributes import CATEGORIES, _supported_label
+    from app.vehicle_attributes import COLORS, _supported_color
 
-    scores = np.zeros((2, len(CATEGORIES)), dtype=np.float32)
-    scores[:, CATEGORIES.index("SUV")] = [0.81, 0.79]
-    scores[:, CATEGORIES.index("Bus")] = [0.85, 0.87]
-    allowed = {"SUV", "Sedan"}
-    assert _supported_label(scores, CATEGORIES, allowed, minimum=0.70, margin=0.15) == "SUV"
-    scores[1, CATEGORIES.index("Bus")] = 0.99
-    assert _supported_label(scores, CATEGORIES, allowed, minimum=0.70, margin=0.15) is None
+    scores = np.zeros((2, len(COLORS)), dtype=np.float32)
+    scores[:, COLORS.index("Black")] = [0.98, 0.96]
+    assert _supported_color(scores) == "Black"
+    scores[1, COLORS.index("White")] = 0.99
+    assert _supported_color(scores) is None

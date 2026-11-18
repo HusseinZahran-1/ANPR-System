@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
@@ -14,6 +14,7 @@ from app.camera.archive import complete_capture, save_capture_export, recent_rec
 from app.camera.events import events
 from app.camera.reviews import ReviewPayload, save_review
 from app.camera.settings import authorize_camera_key, camera_destination
+from app.camera.viewer import COOKIE, HEADER, MAX_AGE, authorize_viewer, has_viewer_session, make_viewer_session
 from app.capture_exports import export_location
 from app.validator.plate_parts import split_plate_text
 from app.vehicle import Vehicle, select_primary_vehicle
@@ -33,6 +34,10 @@ async def receive_camera_image(
 ) -> dict:
     """Receive a camera capture, run ANPR, and publish it to the live page."""
     _authorize(x_camera_key)
+    return await _store_camera_image(file, camera_id)
+
+
+async def _store_camera_image(file: UploadFile, camera_id: str) -> dict:
     if not camera_id or len(camera_id) > 64:
         await file.close()
         raise HTTPException(status_code=422, detail="camera_id must be 1-64 characters")
@@ -58,9 +63,42 @@ async def receive_camera_image(
                       event_id=archived["event_id"], captured_at=archived["captured_at"])
 
 
+@router.post("/viewer/session", status_code=204)
+def start_viewer_session(request: Request, x_camera_key: str | None = Header(None)) -> Response:
+    session = make_viewer_session(x_camera_key, get_settings())
+    response = Response(status_code=204, headers={"Cache-Control": "no-store"})
+    response.set_cookie(COOKIE, session, max_age=MAX_AGE, path="/camera",
+                        httponly=True, samesite="strict", secure=request.url.scheme == "https")
+    return response
+
+
+@router.get("/viewer/session")
+def check_viewer_session(request: Request, response: Response) -> dict:
+    response.headers["Cache-Control"] = "no-store"
+    return {"connected": has_viewer_session(request, get_settings())}
+
+
+@router.delete("/viewer/session", status_code=204)
+def end_viewer_session(request: Request) -> Response:
+    if request.headers.get(HEADER) != "1":
+        raise HTTPException(status_code=403, detail="viewer request required")
+    response = Response(status_code=204, headers={"Cache-Control": "no-store"})
+    response.delete_cookie(COOKIE, path="/camera", httponly=True, samesite="strict",
+                           secure=request.url.scheme == "https")
+    return response
+
+
+@router.post("/viewer/captures", status_code=201)
+async def send_viewer_test_capture(
+    request: Request, file: UploadFile = File(...), x_camera_key: str | None = Header(None),
+) -> dict:
+    authorize_viewer(request, x_camera_key, get_settings())
+    return await _store_camera_image(file, "manual-test")
+
+
 @router.get("/bridge/config")
-def get_camera_bridge(response: Response, x_camera_key: str | None = Header(None)) -> dict:
-    _authorize(x_camera_key)
+def get_camera_bridge(request: Request, response: Response, x_camera_key: str | None = Header(None)) -> dict:
+    authorize_viewer(request, x_camera_key, get_settings())
     response.headers["Cache-Control"] = "no-store"
     return camera_destination(get_settings())
 
@@ -77,8 +115,10 @@ async def receive_camera_alias(
 
 
 @router.get("/events")
-def list_camera_events(limit: int = 10, x_camera_key: str | None = Header(None)) -> dict:
-    _authorize(x_camera_key)
+def list_camera_events(request: Request, response: Response, limit: int = 10,
+                       x_camera_key: str | None = Header(None)) -> dict:
+    authorize_viewer(request, x_camera_key, get_settings())
+    response.headers["Cache-Control"] = "no-store"
     if not 1 <= limit <= 10:
         raise HTTPException(status_code=422, detail="limit must be 1-10")
     visible = {item["id"]: item for item in events.list(limit)}
@@ -101,7 +141,7 @@ def list_camera_events(limit: int = 10, x_camera_key: str | None = Header(None))
             ]
             result = {**result, "ocr_results": readings}
         vehicles = result.get("vehicles") or []
-        if len(vehicles) > 1:
+        if vehicles:
             primary = select_primary_vehicle([Vehicle.model_validate(vehicle) for vehicle in vehicles])
             result = {**result, "vehicles": [primary.model_dump(mode="json")]}
         if result.get("export"):
@@ -114,8 +154,8 @@ def list_camera_events(limit: int = 10, x_camera_key: str | None = Header(None))
 
 
 @router.get("/events/{event_id}/image")
-def get_camera_image(event_id: str, x_camera_key: str | None = Header(None)) -> Response:
-    _authorize(x_camera_key)
+def get_camera_image(event_id: str, request: Request, x_camera_key: str | None = Header(None)) -> Response:
+    authorize_viewer(request, x_camera_key, get_settings())
     found = events.image(event_id)
     if found is None:
         archived = stored_capture(event_id)
@@ -130,10 +170,10 @@ def get_camera_image(event_id: str, x_camera_key: str | None = Header(None)) -> 
 
 
 @router.post("/events/{event_id}/review", status_code=201)
-def review_camera_image(event_id: str, payload: ReviewPayload,
+def review_camera_image(event_id: str, payload: ReviewPayload, request: Request,
                         x_camera_key: str | None = Header(None)) -> dict:
     """Save an explicitly checked capture for later dataset audit."""
-    _authorize(x_camera_key)
+    authorize_viewer(request, x_camera_key, get_settings())
     event = events.snapshot(event_id)
     if event is None:
         archived = stored_capture(event_id)

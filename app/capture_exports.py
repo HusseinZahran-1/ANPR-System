@@ -101,20 +101,19 @@ def _xml(export: CaptureExport, image: bytes, result: dict, source: str, capture
     vehicles = ET.SubElement(root, "vehicles", {"status": result.get("vehicle_status", "disabled")})
     for value in result.get("vehicles", []):
         vehicle = ET.SubElement(vehicles, "vehicle")
-        coarse_type = (value.get("detection_class") or "").title() or None
-        category = value.get("vehicle_type")
-        if coarse_type in {"Car", "Truck"} and category == coarse_type:
-            category = None
+        vehicle_type = (value.get("detection_class") or "").title() or None
         _add_fields(vehicle, {
-            "type": value.get("vehicle_type"), "vehicle_category": category,
-            "vehicle_type": coarse_type,
+            "type": vehicle_type, "vehicle_type": vehicle_type,
             "color": value.get("color"),
             "make": value.get("make"), "detection_class": value.get("detection_class"),
             "detector_confidence": value.get("det_conf"),
             "requires_human_review": value.get("requires_human_review", True),
         })
         if value.get("attribute_sources"):
-            _add_fields(ET.SubElement(vehicle, "attribute_sources"), value["attribute_sources"])
+            _add_fields(ET.SubElement(vehicle, "attribute_sources"), {
+                key: method for key, method in value["attribute_sources"].items()
+                if key in {"color", "make"}
+            })
         _add_box(vehicle, value.get("box"))
         for index in value.get("plate_indices", []):
             ET.SubElement(vehicle, "plate_ref", {"index": str(index)})
@@ -133,11 +132,9 @@ def export_basename(result: dict, capture_id: str) -> str:
     plate = normalize_text(parts.get("full_text") or reading.get("text", ""))
     vehicles = result.get("vehicles", [])
     primary = vehicles[0] if vehicles else {}
-    coarse_type = (primary.get("detection_class") or "").title()
-    category = primary.get("vehicle_type")
-    type_label = f"{coarse_type}-{category}" if coarse_type and category and category != coarse_type else category or coarse_type
+    vehicle_type = (primary.get("detection_class") or "").title()
     attributes = [_filename_attribute(primary.get("color")), _filename_attribute(primary.get("make")),
-                  _filename_attribute(type_label)]
+                  _filename_attribute(vehicle_type)]
     return "_".join(["ANPR", plate if 1 <= len(plate) <= 16 else capture_id, *attributes])
 
 

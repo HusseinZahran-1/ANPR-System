@@ -17,8 +17,9 @@
   <h1>Watch camera captures as they arrive</h1>
   <p class="intro">Give the camera developer the upload endpoint below. Each capture is analyzed automatically and appears here when processing finishes.</p>
   <div class="card controls">
-    <div class="row"><div class="field"><label for="endpoint">Camera upload API URL</label><input class="endpoint" id="endpoint" readonly></div><button class="secondary" id="copy">Copy URL</button></div>
-    <div class="row"><div class="field"><label for="key">Camera API key (from the local .env file)</label><input id="key" type="password" autocomplete="off" placeholder="Paste CAMERA_API_KEY"></div><button id="connect">Start live view</button><button class="secondary" id="disconnect" disabled>Stop</button></div>
+    <div class="row"><div class="field"><label for="endpoint">Camera API URL · fixed</label><input class="endpoint" id="endpoint" value="/camera/events" readonly></div><button class="secondary" id="copy">Copy URL</button></div>
+    <div class="field" id="active-alias" hidden><label for="alias-url">Optional camera API alias</label><input class="endpoint" id="alias-url" readonly></div>
+    <div class="row"><div class="field"><label for="key">Camera API key</label><input id="key" type="password" autocomplete="off" placeholder="Enter the active camera key"></div><button id="connect">Start live view</button><button class="secondary" id="disconnect" disabled>Disconnect</button></div>
     <div class="row"><div class="field"><label for="sample">Try the camera flow with a JPG or PNG</label><input id="sample" type="file" accept="image/jpeg,image/png"></div><button class="secondary" id="send">Send test capture</button></div>
     <div id="state" class="status" role="status" aria-live="polite">Enter the API key to start.</div>
   </div>
@@ -52,14 +53,17 @@
 const $=id=>document.getElementById(id),endpoint=$('endpoint'),key=$('key'),state=$('state'),imageBox=$('imageBox'),reviewImageBox=$('reviewImageBox'),analysis=$('analysis'),history=$('history');
 endpoint.value=new URL('/camera/events',location.href).href;
 let timer=null,lastSeenNewestId=null,selectedEvent=null,displayedEvent=null,displayedImage=null,reviewDirty=false,busy=false;
-let isapiSetup=null;
+let isapiSetup=null, connected=false;
 function setState(message,kind=''){state.textContent=message;state.className='status '+kind;}
-function headers(){return {'X-Camera-Key':key.value.trim()};}
+function headers(){return {'X-Camera-Viewer':'1'};}
 async function refreshBridgeUrl(){
   const bridge=await jsonResponse(await fetch('/camera/bridge/config',{headers:headers(),cache:'no-store'}));
-  endpoint.value=bridge.bridge_url||new URL(bridge.bridge_path,location.href).href;
+  endpoint.value=bridge.canonical_url||new URL('/camera/events',location.href).href;
+  const alias=$('alias-url');
+  alias.value=bridge.bridge_url||new URL(bridge.bridge_path,location.href).href;
+  $('active-alias').hidden=bridge.bridge_path==='/camera/events';
 }
-async function jsonResponse(response){const data=await response.json().catch(()=>({}));if(!response.ok){const error=Error(data.detail||`Request failed (${response.status})`);error.status=response.status;throw error}return data;}
+async function jsonResponse(response){if(response.status===204)return null;const data=await response.json().catch(()=>({}));if(!response.ok){const error=Error(data.detail||`Request failed (${response.status})`);error.status=response.status;throw error}return data;}
 function plateText(event){return event.result?.ocr_results?.[0]?.text||'Unreadable';}
 function addText(parent,tag,value,className){const element=document.createElement(tag);element.textContent=value;if(className)element.className=className;parent.appendChild(element);return element;}
 function showAnalysis(event){
@@ -101,6 +105,7 @@ async function showEvent(event){
   const url=URL.createObjectURL(await response.blob());
   try{
     const img=await new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(Error('Could not display the capture.'));image.src=url});
+    if(!connected)return;
     const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
     const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);const scale=Math.max(2,canvas.width/650);anprResults.drawVehicles(ctx,event.result?.vehicles,scale);ctx.lineWidth=3*scale;ctx.strokeStyle='#58dbc1';
     for(const det of event.result?.detections||[]){const [x1,y1,x2,y2]=det.box;ctx.strokeRect(x1,y1,x2-x1,y2-y1)}
@@ -110,20 +115,58 @@ async function showEvent(event){
   }finally{URL.revokeObjectURL(url)}
 }
 function renderHistory(events){history.replaceChildren();if(!events.length){addText(history,'span','Waiting for a camera capture…','hint');return}for(const event of events){const button=document.createElement('button');button.className='event';addText(button,'small',`${event.camera_id} · ${new Date(event.captured_at).toLocaleTimeString()}`);addText(button,'strong',plateText(event));button.onclick=()=>showEvent(event).catch(error=>setState(error.message,'error'));history.appendChild(button)}}
-async function poll(){if(busy||!key.value.trim())return;busy=true;try{const data=await jsonResponse(await fetch('/camera/events?limit=10',{headers:headers(),cache:'no-store'}));const events=data.events||[];renderHistory(events);if(events.length&&events[0].id!==lastSeenNewestId){await showEvent(events[0]);lastSeenNewestId=events[0].id}setState(events.length?'Live · latest capture received':'Live · waiting for captures','connected')}catch(error){if(error.status===401){setState('Invalid camera API key. Enter the current key and start again.','error');stop()}else setState('Connection lost · retrying automatically: '+error.message,'error')}finally{busy=false}}
-function stop(){if(timer){clearInterval(timer);timer=null}$('connect').disabled=false;$('disconnect').disabled=true}
-$('connect').onclick=()=>{if(!key.value.trim()){setState('Enter the camera API key first.','error');return}stop();$('connect').disabled=true;$('disconnect').disabled=false;refreshBridgeUrl().catch(()=>{});poll();timer=setInterval(poll,2000)};
-$('disconnect').onclick=()=>{stop();setState('Live view stopped.')};
+async function poll(){if(busy||!connected)return;busy=true;try{const data=await jsonResponse(await fetch('/camera/events?limit=10',{headers:headers(),cache:'no-store'}));if(!connected)return;const events=data.events||[];renderHistory(events);if(events.length&&events[0].id!==lastSeenNewestId){await showEvent(events[0]);lastSeenNewestId=events[0].id}setState(events.length?'Live · latest capture received':'Live · waiting for captures','connected')}catch(error){if(error.status===401){setState('Camera session ended. Enter the current key and start again.','error');stop()}else setState('Connection lost · retrying automatically: '+error.message,'error')}finally{busy=false}}
+function stop(){
+  connected=false;
+  if(timer){clearInterval(timer);timer=null}
+  $('connect').disabled=false;
+  $('disconnect').disabled=true;
+}
+function start(){
+  if(connected)return;
+  connected=true;
+  $('connect').disabled=true;
+  $('disconnect').disabled=false;
+  key.value='';
+  refreshBridgeUrl().catch(()=>{});
+  poll();
+  timer=setInterval(poll,2000);
+}
+$('connect').onclick=async()=>{
+  if(!key.value.trim()){setState('Enter the camera API key first.','error');return}
+  $('connect').disabled=true;
+  try{
+    await jsonResponse(await fetch('/camera/viewer/session',{
+      method:'POST',headers:{'X-Camera-Key':key.value.trim()}
+    }));
+    start();
+  }catch(error){setState(error.message,'error');$('connect').disabled=false}
+};
+key.addEventListener('keydown',event=>{if(event.key==='Enter'&&!$('connect').disabled)$('connect').click()});
+$('disconnect').onclick=async()=>{
+  try{
+    await jsonResponse(await fetch('/camera/viewer/session',{method:'DELETE',headers:headers()}));
+    stop();
+    lastSeenNewestId=selectedEvent=displayedEvent=displayedImage=isapiSetup=null;
+    reviewDirty=false;
+    for(const box of [history,imageBox,reviewImageBox,analysis,$('isapiSettings'),$('isapiPacket')])box.replaceChildren();
+    $('reviewTarget').textContent='No review target selected.';
+    $('saveReview').disabled=$('copyIsapi').disabled=true;
+    setState('Disconnected.');
+  }catch(error){setState(error.message,'error')}
+};
+fetch('/camera/viewer/session',{headers:headers(),cache:'no-store'})
+  .then(jsonResponse).then(session=>{if(session.connected)start()}).catch(()=>{});
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(endpoint.value);setState('Camera upload URL copied.')}catch{endpoint.select();setState('Select and copy the camera upload URL.')}};
-$('showIsapi').onclick=async()=>{if(!key.value.trim()){setState('Enter the camera API key first.','error');return}try{isapiSetup=await jsonResponse(await fetch('/camera/isapi2/config',{headers:headers(),cache:'no-store'}));const box=$('isapiSettings');box.replaceChildren();for(const [label,value] of [['Version',isapiSetup.version],['Host IP Address/Domain Name',isapiSetup.host_ip||'Check this computer’s LAN IP'],['Host Port',isapiSetup.host_port],['Host URL',isapiSetup.host_url],['Heartbeat Interval',`${isapiSetup.heartbeat_interval_s} s`],['Uploaded Picture Type',isapiSetup.uploaded_picture_type],['Authentication Mode',isapiSetup.authentication_mode],['Platform Response Verification',isapiSetup.platform_response_verification?'On':'Off']]){addText(box,'strong',label);addText(box,'span',value)}$('copyIsapi').disabled=false;setState('Camera settings loaded. Keep the Host URL private.','connected')}catch(error){setState(error.message,'error')}};
+$('showIsapi').onclick=async()=>{if(!connected){setState('Start the live view first.','error');return}try{isapiSetup=await jsonResponse(await fetch('/camera/isapi2/config',{headers:headers(),cache:'no-store'}));const box=$('isapiSettings');box.replaceChildren();for(const [label,value] of [['Version',isapiSetup.version],['Host IP Address/Domain Name',isapiSetup.host_ip||'Check this computer’s LAN IP'],['Host Port',isapiSetup.host_port],['Host URL',isapiSetup.host_url],['Heartbeat Interval',`${isapiSetup.heartbeat_interval_s} s`],['Uploaded Picture Type',isapiSetup.uploaded_picture_type],['Authentication Mode',isapiSetup.authentication_mode],['Platform Response Verification',isapiSetup.platform_response_verification?'On':'Off']]){addText(box,'strong',label);addText(box,'span',value)}$('copyIsapi').disabled=false;setState('Camera settings loaded. Keep the Host URL private.','connected')}catch(error){setState(error.message,'error')}};
 $('copyIsapi').onclick=async()=>{if(!isapiSetup)return;try{await navigator.clipboard.writeText(isapiSetup.host_url);setState('ISAPI2 Host URL copied.','connected')}catch{setState('Copy the Host URL shown above.','error')}};
-$('checkIsapi').onclick=async()=>{if(!key.value.trim()){setState('Enter the camera API key first.','error');return}try{const data=await jsonResponse(await fetch('/camera/isapi2/status/last',{headers:headers(),cache:'no-store'}));$('isapiPacket').textContent=data.received_at?`Last packet: ${new Date(data.received_at).toLocaleString()} · ${data.bytes} bytes · ${data.image_selected?'image found':'no image'} · ${(data.parts||[]).map(part=>part.name+' ('+part.bytes+' bytes)').join(', ')}`:'No ISAPI2 packet received since server start.'}catch(error){setState(error.message,'error')}};
-$('send').onclick=async()=>{const file=$('sample').files[0];if(!key.value.trim()||!file){setState('Choose an image and enter the API key.','error');return}if(!['image/jpeg','image/png'].includes(file.type)||file.size>10*1024*1024){setState('Choose a JPG or PNG under 10 MB.','error');return}const form=new FormData();form.append('file',file);form.append('camera_id','manual-test');$('send').disabled=true;setState('Analyzing test capture…');try{await jsonResponse(await fetch('/camera/events',{method:'POST',headers:headers(),body:form}));await poll();setState('Test capture analyzed.','connected')}catch(error){setState(error.message,'error')}finally{$('send').disabled=false}};
+$('checkIsapi').onclick=async()=>{if(!connected){setState('Start the live view first.','error');return}try{const data=await jsonResponse(await fetch('/camera/isapi2/status/last',{headers:headers(),cache:'no-store'}));$('isapiPacket').textContent=data.received_at?`Last packet: ${new Date(data.received_at).toLocaleString()} · ${data.bytes} bytes · ${data.image_selected?'image found':'no image'} · ${(data.parts||[]).map(part=>part.name+' ('+part.bytes+' bytes)').join(', ')}`:'No ISAPI2 packet received since server start.'}catch(error){setState(error.message,'error')}};
+$('send').onclick=async()=>{const file=$('sample').files[0];if(!connected||!file){setState('Start the live view and choose an image.','error');return}if(!['image/jpeg','image/png'].includes(file.type)||file.size>10*1024*1024){setState('Choose a JPG or PNG under 10 MB.','error');return}const form=new FormData();form.append('file',file);$('send').disabled=true;setState('Analyzing test capture…');try{await jsonResponse(await fetch('/camera/viewer/captures',{method:'POST',headers:headers(),body:form}));await poll();setState('Test capture analyzed.','connected')}catch(error){setState(error.message,'error')}finally{$('send').disabled=false}};
 $('reviewForm').addEventListener('input',event=>{if(event.target.id!=='reviewer')reviewDirty=true});
 $('reviewLatest').onclick=()=>{if(!displayedEvent||!displayedImage)return;selectReview(displayedEvent,displayedImage)};
 $('platePresent').onchange=()=>{reviewDirty=true;if(!$('platePresent').checked){$('plateReadable').checked=false;$('correctedText').value='';$('country').value='UNKNOWN'}};
 $('plateReadable').onchange=()=>{reviewDirty=true;if($('plateReadable').checked)$('platePresent').checked=true;else $('correctedText').value=''};
-$('reviewForm').onsubmit=async event=>{event.preventDefault();if(!selectedEvent||!key.value.trim()){$('reviewStatus').textContent='Select a capture and enter the API key.';return}const payload={reviewer:$('reviewer').value,plate_present:$('platePresent').checked,plate_readable:$('plateReadable').checked,corrected_text:$('correctedText').value,country:$('country').value,confirmed_from_pixels:$('confirmed').checked};$('saveReview').disabled=true;$('reviewStatus').textContent='Saving reviewed sample…';try{await jsonResponse(await fetch(`/camera/events/${encodeURIComponent(selectedEvent.id)}/review`,{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify(payload)}));$('reviewStatus').textContent='Saved for dataset audit. It is not in model training.';reviewDirty=false}catch(error){$('reviewStatus').textContent=error.message;$('saveReview').disabled=false}};
+$('reviewForm').onsubmit=async event=>{event.preventDefault();if(!selectedEvent||!connected){$('reviewStatus').textContent='Start the live view and select a capture.';return}const payload={reviewer:$('reviewer').value,plate_present:$('platePresent').checked,plate_readable:$('plateReadable').checked,corrected_text:$('correctedText').value,country:$('country').value,confirmed_from_pixels:$('confirmed').checked};$('saveReview').disabled=true;$('reviewStatus').textContent='Saving reviewed sample…';try{await jsonResponse(await fetch(`/camera/events/${encodeURIComponent(selectedEvent.id)}/review`,{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify(payload)}));$('reviewStatus').textContent='Saved for dataset audit. It is not in model training.';reviewDirty=false}catch(error){$('reviewStatus').textContent=error.message;$('saveReview').disabled=false}};
 </script>
 </body>
 </html>

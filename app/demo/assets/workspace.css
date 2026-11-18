@@ -22,3 +22,6 @@ a { color: var(--accent); }
 .status-bad { color: #ffb0a0; }
 [hidden] { display: none !important; }
 @media (max-width: 700px) { .panel-grid { grid-template-columns: 1fr; } .portal { padding: 18px 14px 38px; } }
+
+.camera-endpoint-card { margin-bottom: 16px; }
+.camera-endpoint-card input { margin-bottom: 6px; font-family: Consolas, monospace; }

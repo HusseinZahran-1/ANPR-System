@@ -48,7 +48,7 @@
 
 .plate-split-note { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
 
-.result-fields .vehicle-category { border-color: #568b91; }
+.result-fields .vehicle-type { border-color: #568b91; }
 .result-fields .vehicle-color { border-color: #8c7944; }
 .result-fields .vehicle-make { grid-column: 1 / -1; }
 .export-note { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
