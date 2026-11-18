@@ -7,12 +7,15 @@ project-relative default `data/processed/anpr_exports`.
 ```text
 data/processed/anpr_exports/
   <capture-id>/
-    <capture-id>.jpg
-    <capture-id>.xml
+    ANPR_1200345.jpg
+    ANPR_1200345.xml
 ```
 
 PNG uploads keep their original PNG bytes and extension. The two files share
-a capture ID and basename and are published together from a staging directory.
+the basename `ANPR_<full-plate-reading>`, including any leading zeros.
+Each bundle uses a unique capture ID as its directory name, so repeated
+readings stay separate. With no usable reading, filenames use
+`ANPR_<capture-id>`. Both files are published together from a staging directory.
 Camera exports use the camera event ID and remain accessible alongside the
 existing live timeline. An empty detection still produces a valid bundle.
 A failed export returns an error. The camera inbox retains the original

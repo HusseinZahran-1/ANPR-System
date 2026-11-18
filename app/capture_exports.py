@@ -14,6 +14,7 @@ from xml.etree import ElementTree as ET
 from pydantic import BaseModel
 
 from app.api.config import resolve_path
+from app.validator.jordanian_validator import normalize_text
 
 
 class CaptureExport(BaseModel):
@@ -81,8 +82,13 @@ def save_export(image: bytes, suffix: str, result: dict, *, source: str,
     capture_id = capture_id or uuid4().hex
     if suffix not in {".jpg", ".png"} or not re.fullmatch(r"[0-9a-f]{32}", capture_id):
         raise ValueError("invalid export ID or image extension")
-    export = CaptureExport(id=capture_id, image_filename=capture_id + suffix,
-                           xml_filename=capture_id + ".xml")
+    readings = result.get("ocr_results", [])
+    reading = readings[0] if readings else {}
+    parts = reading.get("plate_parts") or {}
+    plate = normalize_text(parts.get("full_text") or reading.get("text", ""))
+    basename = f"ANPR_{plate if 1 <= len(plate) <= 16 else capture_id}"
+    export = CaptureExport(id=capture_id, image_filename=basename + suffix,
+                           xml_filename=basename + ".xml")
     timestamp = captured_at or datetime.now(timezone.utc).isoformat()
     xml = _xml(export, image, result, source, timestamp)
     root = resolve_path(os.getenv("ANPR_EXPORT_DIR") or "data/processed/anpr_exports")

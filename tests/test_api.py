@@ -394,7 +394,8 @@ def test_demo_saves_original_and_matching_xml(api, monkeypatch, tmp_path):
     directory = tmp_path / "exports" / saved["id"]
     image = directory / saved["image_filename"]
     xml = directory / saved["xml_filename"]
-    assert image.stem == xml.stem == saved["id"]
+    assert image.name == "ANPR_1200345.png"
+    assert xml.name == "ANPR_1200345.xml"
     assert image.read_bytes() == content
     root = ElementTree.parse(xml).getroot()
     assert root.find("image").attrib["filename"] == image.name
@@ -428,3 +429,13 @@ def test_issued_inference_key_persists_and_can_be_revoked(api, monkeypatch, tmp_
     assert key["key"].encode() not in (tmp_path / "keys.sqlite3").read_bytes()
     assert client.delete(f"/v1/keys/{key['id']}", headers=admin).status_code == 204
     assert client.get("/v1/ready", headers=auth).status_code == 401
+
+
+def test_export_without_a_plate_uses_anpr_and_capture_id(monkeypatch, tmp_path):
+    from app.capture_exports import save_export
+
+    monkeypatch.setenv("ANPR_EXPORT_DIR", str(tmp_path))
+    result = save_export(png_bytes(), ".png", {"ocr_results": []}, source="upload")
+    base = f"ANPR_{result['id']}"
+    assert result["image_filename"] == base + ".png"
+    assert result["xml_filename"] == base + ".xml"
