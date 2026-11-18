@@ -33,3 +33,6 @@ The [versioned inference API](INFERENCE_API.md) keeps its default inference-only
 behavior. Add multipart field `save_xml=true` to save a bundle on request.
 The `export` response contains the capture ID, date folder and both filenames. The API
 console under `/api` can issue a dedicated client key and test either mode.
+
+Older per-capture exports may be migrated by an operator. The live view reads the local
+`.legacy-index.json` mapping for captures moved into a date folder.

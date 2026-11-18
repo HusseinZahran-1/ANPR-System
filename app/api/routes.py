@@ -121,6 +121,7 @@ def _run_image(path: Path, filename: str, camera: bool = False) -> dict:
             vehicles, status = vehicle_evidence(
                 path, result["detections"], settings.vehicle_detector_path,
                 settings.vehicle_attribute_path, settings.device,
+                structured_model=settings.vehicle_structured_path,
             )
             result["vehicles"] = [vehicle.model_dump(mode="json") for vehicle in vehicles]
             result["vehicle_status"] = status

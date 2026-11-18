@@ -129,6 +129,7 @@ class Settings:
     authority_model_path: str = ""
     vehicle_detector_model_path: str = ""
     vehicle_attribute_model_path: str = ""
+    vehicle_structured_model_path: str = ""
     authority_min_prefix_confidence: float = .8
     detection_conf: float = DEFAULT_DETECTION_CONF
     detection_imgsz: int = DEFAULT_DETECTION_IMGSZ
@@ -200,6 +201,7 @@ class Settings:
             ocr_model_path=_env("MODEL_OCR_PATH", DEFAULT_OCR_PATH),
             vehicle_detector_model_path=_env("VEHICLE_DETECTOR_PATH", ""),
             vehicle_attribute_model_path=_env("VEHICLE_ATTRIBUTE_PATH", ""),
+            vehicle_structured_model_path=_env("VEHICLE_STRUCTURED_ATTRIBUTE_PATH", ""),
             authority_model_path=_env('AUTHORITY_REGION_MODEL_PATH',''),
             authority_min_prefix_confidence=_env_float('AUTHORITY_PREFIX_MIN_CONF',.8),
             detection_conf=_env_float("DETECTION_CONF", DEFAULT_DETECTION_CONF),
@@ -258,6 +260,10 @@ class Settings:
     @property
     def vehicle_attribute_path(self) -> Path | None:
         return resolve_path(self.vehicle_attribute_model_path) if self.vehicle_attribute_model_path else None
+
+    @property
+    def vehicle_structured_path(self) -> Path | None:
+        return resolve_path(self.vehicle_structured_model_path) if self.vehicle_structured_model_path else None
 
     @property
     def authority_path(self) -> Path | None:

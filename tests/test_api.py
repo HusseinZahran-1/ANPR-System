@@ -392,7 +392,7 @@ def test_demo_saves_original_and_matching_xml(api, monkeypatch, tmp_path):
         box=(0, 0, 15, 18), detection_class="car", det_conf=0.9,
         vehicle_type="SUV", color="Black", make="Mercedes-Benz",
     )
-    monkeypatch.setattr(routes, "vehicle_evidence", lambda *args: ([vehicle], "ready"))
+    monkeypatch.setattr(routes, "vehicle_evidence", lambda *args, **kwargs: ([vehicle], "ready"))
     content = png_bytes()
     response = client.post("/demo/predict", files={"file": ("same.png", content, "image/png")})
     assert response.is_success

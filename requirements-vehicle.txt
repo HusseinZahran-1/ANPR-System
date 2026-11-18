@@ -1,3 +1,6 @@
 # Optional CLIP attributes. Install with --no-build-isolation after installing
 # wheel and a setuptools release that still provides pkg_resources.
 clip @ git+https://github.com/openai/CLIP.git@a1d071733d7111c9c014f024669f959182114e33e
+
+# Optional CPU runtime for the converted supervised vehicle attribute checkpoint.
+onnxruntime==1.24.4

@@ -42,9 +42,10 @@
     section.append(element('h3', 'Vehicle details'));
     const vehicles = result.vehicles ?? [];
     if (!vehicles.length) {
-      const detail = result.vehicle_status === 'unavailable'
-        ? 'Vehicle analysis is unavailable.'
-        : 'No vehicle detected.';
+      const detail = {
+        unavailable: 'Vehicle analysis is unavailable.',
+        unassociated: 'No vehicle could be safely linked to the plate.',
+      }[result.vehicle_status] || 'No vehicle detected.';
       section.append(element('p', detail, 'vehicle-note'));
       return section;
     }

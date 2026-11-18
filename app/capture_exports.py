@@ -113,6 +113,8 @@ def _xml(export: CaptureExport, image: bytes, result: dict, source: str, capture
             "detector_confidence": value.get("det_conf"),
             "requires_human_review": value.get("requires_human_review", True),
         })
+        if value.get("attribute_sources"):
+            _add_fields(ET.SubElement(vehicle, "attribute_sources"), value["attribute_sources"])
         _add_box(vehicle, value.get("box"))
         for index in value.get("plate_indices", []):
             ET.SubElement(vehicle, "plate_ref", {"index": str(index)})
