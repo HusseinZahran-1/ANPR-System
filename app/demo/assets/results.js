@@ -53,11 +53,16 @@
       const card = element('div', undefined, 'vehicle-card');
       const plateRefs = (vehicle.plate_indices ?? []).map(i => i + 1);
       const association = plateRefs.length
-        ? ` · Linked to plate ${plateRefs.join(', ')}`
-        : ' · No plate linked';
+        ? ` Â· Linked to plate ${plateRefs.join(', ')}`
+        : ' Â· No plate linked';
       card.append(element('div', `Primary vehicle${association}`, 'vehicle-note'));
+      const broad = vehicle.detection_class || '';
+      const type = broad ? broad[0].toUpperCase() + broad.slice(1) : 'Unknown';
+      const category = vehicle.vehicle_type === type && ['Car', 'Truck'].includes(type)
+        ? 'Unknown' : (vehicle.vehicle_type || 'Unknown');
       card.append(fields([
-        ['Vehicle category', vehicle.vehicle_type || 'Unknown', 'vehicle-category'],
+        ['Vehicle type', type, 'vehicle-type'],
+        ['Vehicle category', category, 'vehicle-category'],
         ['Vehicle color', vehicle.color ?? 'Unknown', 'vehicle-color'],
         ['Make', vehicle.make ?? 'Unknown', 'vehicle-make'],
       ]));
@@ -89,7 +94,8 @@
   function exportSummary(result) {
     const saved = result?.export;
     if (!saved) return null;
-    return element('p', `Saved together: ${saved.image_filename} and ${saved.xml_filename}`,
+    const destination = saved.folder ? `Saved in ${saved.folder}` : 'Saved together';
+    return element('p', `${destination}: ${saved.image_filename} and ${saved.xml_filename}`,
                    'export-note');
   }
 

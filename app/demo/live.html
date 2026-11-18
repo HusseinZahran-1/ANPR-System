@@ -13,7 +13,7 @@
 </head>
 <body>
 <main>
-  <div class="top"><span>▣ JORDAN ANPR · LIVE CAMERA</span><nav class="view-links"><a href="/demo">Single-image demo</a><a href="/api">API console</a></nav></div>
+  <div class="top"><a href="/">JORDAN ANPR</a><nav class="view-links"><a href="/demo">Single-image demo</a><a href="/api">API console</a><a href="/settings">Settings</a></nav></div>
   <h1>Watch camera captures as they arrive</h1>
   <p class="intro">Give the camera developer the upload endpoint below. Each capture is analyzed automatically and appears here when processing finishes.</p>
   <div class="card controls">
@@ -55,6 +55,10 @@ let timer=null,lastSeenNewestId=null,selectedEvent=null,displayedEvent=null,disp
 let isapiSetup=null;
 function setState(message,kind=''){state.textContent=message;state.className='status '+kind;}
 function headers(){return {'X-Camera-Key':key.value.trim()};}
+async function refreshBridgeUrl(){
+  const bridge=await jsonResponse(await fetch('/camera/bridge/config',{headers:headers(),cache:'no-store'}));
+  endpoint.value=bridge.bridge_url||new URL(bridge.bridge_path,location.href).href;
+}
 async function jsonResponse(response){const data=await response.json().catch(()=>({}));if(!response.ok){const error=Error(data.detail||`Request failed (${response.status})`);error.status=response.status;throw error}return data;}
 function plateText(event){return event.result?.ocr_results?.[0]?.text||'Unreadable';}
 function addText(parent,tag,value,className){const element=document.createElement(tag);element.textContent=value;if(className)element.className=className;parent.appendChild(element);return element;}
@@ -108,7 +112,7 @@ async function showEvent(event){
 function renderHistory(events){history.replaceChildren();if(!events.length){addText(history,'span','Waiting for a camera capture…','hint');return}for(const event of events){const button=document.createElement('button');button.className='event';addText(button,'small',`${event.camera_id} · ${new Date(event.captured_at).toLocaleTimeString()}`);addText(button,'strong',plateText(event));button.onclick=()=>showEvent(event).catch(error=>setState(error.message,'error'));history.appendChild(button)}}
 async function poll(){if(busy||!key.value.trim())return;busy=true;try{const data=await jsonResponse(await fetch('/camera/events?limit=10',{headers:headers(),cache:'no-store'}));const events=data.events||[];renderHistory(events);if(events.length&&events[0].id!==lastSeenNewestId){await showEvent(events[0]);lastSeenNewestId=events[0].id}setState(events.length?'Live · latest capture received':'Live · waiting for captures','connected')}catch(error){if(error.status===401){setState('Invalid camera API key. Enter the current key and start again.','error');stop()}else setState('Connection lost · retrying automatically: '+error.message,'error')}finally{busy=false}}
 function stop(){if(timer){clearInterval(timer);timer=null}$('connect').disabled=false;$('disconnect').disabled=true}
-$('connect').onclick=()=>{if(!key.value.trim()){setState('Enter the camera API key first.','error');return}stop();$('connect').disabled=true;$('disconnect').disabled=false;poll();timer=setInterval(poll,2000)};
+$('connect').onclick=()=>{if(!key.value.trim()){setState('Enter the camera API key first.','error');return}stop();$('connect').disabled=true;$('disconnect').disabled=false;refreshBridgeUrl().catch(()=>{});poll();timer=setInterval(poll,2000)};
 $('disconnect').onclick=()=>{stop();setState('Live view stopped.')};
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(endpoint.value);setState('Camera upload URL copied.')}catch{endpoint.select();setState('Select and copy the camera upload URL.')}};
 $('showIsapi').onclick=async()=>{if(!key.value.trim()){setState('Enter the camera API key first.','error');return}try{isapiSetup=await jsonResponse(await fetch('/camera/isapi2/config',{headers:headers(),cache:'no-store'}));const box=$('isapiSettings');box.replaceChildren();for(const [label,value] of [['Version',isapiSetup.version],['Host IP Address/Domain Name',isapiSetup.host_ip||'Check this computer’s LAN IP'],['Host Port',isapiSetup.host_port],['Host URL',isapiSetup.host_url],['Heartbeat Interval',`${isapiSetup.heartbeat_interval_s} s`],['Uploaded Picture Type',isapiSetup.uploaded_picture_type],['Authentication Mode',isapiSetup.authentication_mode],['Platform Response Verification',isapiSetup.platform_response_verification?'On':'Off']]){addText(box,'strong',label);addText(box,'span',value)}$('copyIsapi').disabled=false;setState('Camera settings loaded. Keep the Host URL private.','connected')}catch(error){setState(error.message,'error')}};

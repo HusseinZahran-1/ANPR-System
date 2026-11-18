@@ -87,7 +87,7 @@ def save_capture_export(record: dict, image: bytes, result: dict) -> dict:
     suffix = Path(record["image_path"]).suffix
     try:
         return save_export(image, suffix, result, source="camera",
-                           capture_id=record["event_id"], captured_at=record["captured_at"])
+                           capture_id=record["event_id"], captured_at=record["captured_at"], camera_id=record["camera_id"])
     except OSError as exc:
         raise HTTPException(status_code=503, detail="capture export could not be saved") from exc
 

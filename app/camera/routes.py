@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hmac
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
@@ -14,6 +13,8 @@ from app.api.routes import analyze_upload
 from app.camera.archive import complete_capture, save_capture_export, recent_records, save_capture, stored_capture
 from app.camera.events import events
 from app.camera.reviews import ReviewPayload, save_review
+from app.camera.settings import authorize_camera_key, camera_destination
+from app.capture_exports import export_location
 from app.validator.plate_parts import split_plate_text
 from app.vehicle import Vehicle, select_primary_vehicle
 
@@ -21,11 +22,7 @@ router = APIRouter(prefix="/camera", tags=["camera"])
 
 
 def _authorize(key: str | None) -> None:
-    expected = get_settings().camera_api_key
-    if not expected:
-        raise HTTPException(status_code=503, detail="CAMERA_API_KEY is not configured")
-    if not key or not hmac.compare_digest(key, expected):
-        raise HTTPException(status_code=401, detail="invalid camera API key")
+    authorize_camera_key(key, get_settings())
 
 
 @router.post("/events", status_code=201)
@@ -61,6 +58,24 @@ async def receive_camera_image(
                       event_id=archived["event_id"], captured_at=archived["captured_at"])
 
 
+@router.get("/bridge/config")
+def get_camera_bridge(response: Response, x_camera_key: str | None = Header(None)) -> dict:
+    _authorize(x_camera_key)
+    response.headers["Cache-Control"] = "no-store"
+    return camera_destination(get_settings())
+
+
+@router.post("/bridge/{alias}", status_code=201)
+async def receive_camera_alias(
+    alias: str, file: UploadFile = File(...), camera_id: str = Form("gate-1"),
+    x_camera_key: str | None = Header(None),
+) -> dict:
+    if camera_destination(get_settings())["bridge_path"] != f"/camera/bridge/{alias}":
+        await file.close()
+        raise HTTPException(status_code=404, detail="camera bridge path not configured")
+    return await receive_camera_image(file=file, camera_id=camera_id, x_camera_key=x_camera_key)
+
+
 @router.get("/events")
 def list_camera_events(limit: int = 10, x_camera_key: str | None = Header(None)) -> dict:
     _authorize(x_camera_key)
@@ -89,6 +104,10 @@ def list_camera_events(limit: int = 10, x_camera_key: str | None = Header(None))
         if len(vehicles) > 1:
             primary = select_primary_vehicle([Vehicle.model_validate(vehicle) for vehicle in vehicles])
             result = {**result, "vehicles": [primary.model_dump(mode="json")]}
+        if result.get("export"):
+            location = export_location(result["export"])
+            if location is not result["export"]:
+                result = {**result, "export": location}
         if result is not event["result"]:
             latest[index] = {**event, "result": result}
     return {"events": latest}

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hmac
 import io
-import socket
 import threading
 from datetime import datetime, timezone
 from email import policy
@@ -26,6 +25,7 @@ from app.api.config import get_settings
 from app.api.routes import analyze_upload
 from app.camera.archive import complete_capture, save_capture_export, save_capture
 from app.camera.events import events
+from app.camera.settings import authorize_camera_key, camera_destination
 
 router = APIRouter(prefix="/camera/isapi2", tags=["camera"])
 _diagnostic_lock = threading.Lock()
@@ -137,9 +137,7 @@ async def receive_isapi2(request: Request, token: str) -> dict:
 @router.get("/status/last")
 def last_isapi2_packet(x_camera_key: str | None = Header(None)) -> dict:
     """Expose image-free packet diagnostics to the authenticated live viewer."""
-    expected = get_settings().camera_api_key
-    if not expected or not x_camera_key or not hmac.compare_digest(x_camera_key, expected):
-        raise HTTPException(status_code=401, detail="invalid camera API key")
+    authorize_camera_key(x_camera_key, get_settings())
     with _diagnostic_lock:
         return dict(_last_packet)
 
@@ -148,22 +146,13 @@ def last_isapi2_packet(x_camera_key: str | None = Header(None)) -> dict:
 def isapi2_setup(response: Response, x_camera_key: str | None = Header(None)) -> dict:
     """Give an authenticated operator the exact camera-side settings."""
     settings = get_settings()
-    if not settings.camera_api_key or not x_camera_key or not hmac.compare_digest(
-            x_camera_key, settings.camera_api_key):
-        raise HTTPException(status_code=401, detail="invalid camera API key")
+    authorize_camera_key(x_camera_key, settings)
     if not settings.camera_isapi_token:
         raise HTTPException(status_code=503, detail="CAMERA_ISAPI_TOKEN is not configured")
-    host_ip = settings.camera_public_host or settings.host
-    if host_ip in {"0.0.0.0", "::"}:
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
-                connection.connect(("192.0.2.1", 1))
-                host_ip = connection.getsockname()[0]
-        except OSError:
-            host_ip = ""
+    destination = camera_destination(settings)
     response.headers["Cache-Control"] = "no-store"
-    return {"version": settings.camera_public_transport, "host_ip": host_ip,
-            "host_port": settings.camera_public_port or settings.port,
+    return {"version": destination["transport"], "host_ip": destination["host"],
+            "host_port": destination["port"],
             "host_url": "/camera/isapi2/" + settings.camera_isapi_token,
             "heartbeat_interval_s": 0, "uploaded_picture_type": "Detection Picture",
             "authentication_mode": "None", "platform_response_verification": False}
