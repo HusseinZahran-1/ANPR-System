@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 from app.camera.routes import router as camera_router
@@ -31,6 +32,7 @@ app = FastAPI(
 app.include_router(router)
 app.include_router(camera_router)
 app.include_router(isapi2_router)
+app.mount("/assets", StaticFiles(directory=Path(__file__).parent / "demo" / "assets"), name="assets")
 
 
 @app.get("/", include_in_schema=False)
@@ -40,7 +42,7 @@ def home() -> RedirectResponse:
 
 @app.get("/demo", include_in_schema=False)
 def demo() -> FileResponse:
-    """Serve the self-contained company demo on the same origin as the API."""
+    """Serve the company demo on the same origin as the API."""
     return FileResponse(Path(__file__).parent / "demo" / "index.html",
                         media_type="text/html; charset=utf-8")
 

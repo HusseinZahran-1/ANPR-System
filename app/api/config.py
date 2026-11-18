@@ -127,6 +127,8 @@ class Settings:
     recovery_ocr_layout_mode: str = "rectify_unfold_rows_v5"
     ocr_model_path: str = DEFAULT_OCR_PATH
     authority_model_path: str = ""
+    vehicle_detector_model_path: str = ""
+    vehicle_attribute_model_path: str = ""
     authority_min_prefix_confidence: float = .8
     detection_conf: float = DEFAULT_DETECTION_CONF
     detection_imgsz: int = DEFAULT_DETECTION_IMGSZ
@@ -194,6 +196,8 @@ class Settings:
             merge_fallback_fragments=_env_bool("FALLBACK_MERGE_FRAGMENTS", False),
             recovery_ocr_layout_mode=_env("RECOVERY_OCR_LAYOUT_MODE", "rectify_unfold_rows_v5"),
             ocr_model_path=_env("MODEL_OCR_PATH", DEFAULT_OCR_PATH),
+            vehicle_detector_model_path=_env("VEHICLE_DETECTOR_PATH", ""),
+            vehicle_attribute_model_path=_env("VEHICLE_ATTRIBUTE_PATH", ""),
             authority_model_path=_env('AUTHORITY_REGION_MODEL_PATH',''),
             authority_min_prefix_confidence=_env_float('AUTHORITY_PREFIX_MIN_CONF',.8),
             detection_conf=_env_float("DETECTION_CONF", DEFAULT_DETECTION_CONF),
@@ -242,6 +246,14 @@ class Settings:
     @property
     def ocr_path(self) -> Path:
         return resolve_path(self.ocr_model_path)
+
+    @property
+    def vehicle_detector_path(self) -> Path | None:
+        return resolve_path(self.vehicle_detector_model_path) if self.vehicle_detector_model_path else None
+
+    @property
+    def vehicle_attribute_path(self) -> Path | None:
+        return resolve_path(self.vehicle_attribute_model_path) if self.vehicle_attribute_model_path else None
 
     @property
     def authority_path(self) -> Path | None:

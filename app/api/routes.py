@@ -13,12 +13,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Security, UploadFile
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from PIL import Image, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
 from app.api.config import get_settings
 from app.pipeline import Pipeline
+from app.vehicle import Vehicle, VehicleStatus, vehicle_evidence
 from app.ocr.authority_regions import AuthorityReaderUnavailable
 
 router = APIRouter()
@@ -113,6 +114,14 @@ def _get_camera_pipeline() -> Pipeline:
 def _run_image(path: Path, filename: str, camera: bool = False) -> dict:
     with _inference_lock:
         result = (_get_camera_pipeline() if camera else _get_pipeline()).run(path)
+        if camera:
+            settings = get_settings()
+            vehicles, status = vehicle_evidence(
+                path, result["detections"], settings.vehicle_detector_path,
+                settings.vehicle_attribute_path, settings.device,
+            )
+            result["vehicles"] = [vehicle.model_dump(mode="json") for vehicle in vehicles]
+            result["vehicle_status"] = status
     result["image_path"] = filename
     return result
 
@@ -235,6 +244,8 @@ class InferenceResponse(BaseModel):
     image_path: str
     detections: list[DetectionEvidence]
     ocr_results: list[ReadingEvidence]
+    vehicles: list[Vehicle] = Field(default_factory=list)
+    vehicle_status: VehicleStatus = "disabled"
     validations: list[dict]
     decisions: list[dict]
     meta: dict

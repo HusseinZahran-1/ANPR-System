@@ -104,3 +104,5 @@ return null parts and `unresolved`. Seven contiguous digits use the declared
 `ocr_results` are empty and `decisions` records the review outcome. Scores
 express model confidence. A format match still requires review and
 `country_verified` remains false.
+
+The gate profile can also return [optional vehicle evidence](VEHICLE_ATTRIBUTES.md).

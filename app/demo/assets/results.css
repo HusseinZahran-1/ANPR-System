@@ -1,0 +1,47 @@
+.result-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(8rem, 100%), 1fr));
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.result-fields > div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #081921;
+  padding: 9px 11px;
+}
+
+.result-fields dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.result-fields dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.result-fields .full-plate {
+  grid-column: 1 / -1;
+  border-color: #346864;
+}
+
+.result-fields .full-plate dd,
+.result-fields .plate-part dd {
+  font-family: Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+}
+
+.result-fields .full-plate dd { font-size: clamp(20px, 4vw, 32px); }
+.result-fields .plate-part dd { font-size: 17px; }
+.vehicle-results { margin-top: 18px; }
+.vehicle-results h3 { margin: 0 0 8px; font-size: 16px; color: var(--text); }
+.vehicle-card + .vehicle-card { margin-top: 12px; }
+.vehicle-note { color: var(--muted); font-size: 12px; }
