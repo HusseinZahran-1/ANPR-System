@@ -8,7 +8,14 @@ appears separately in the authenticated live view.
 
 The live dashboard remembers a sign-in for up to 30 days using an HTTP-only
 browser cookie. Choose **Disconnect** to clear the session on that browser.
-Changing the camera key requires current viewers to sign in again. Hardware
+Changing the camera key invalidates current browser sessions. The key field
+shows a masked active-session marker. The browser receives no plaintext
+camera key from the service.
+
+Set `CAMERA_AUTO_CONNECT_LOCAL=true` only for a direct listener on the operator
+workstation. It permits a browser running on that same workstation to
+connect automatically. Other browsers enter the camera key once. Use the
+default setting when a proxy shares the listener. Hardware
 camera and bridge uploads continue to authenticate with their existing methods.
 
 ## Operator settings

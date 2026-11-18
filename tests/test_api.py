@@ -538,3 +538,25 @@ def test_remembered_viewer_is_scoped_and_ends_after_camera_key_rotation(api, mon
                       json={"camera_key": "rotated-camera-key-test"}).is_success
     assert not client.get("/camera/viewer/session", headers=viewer).json()["connected"]
     assert client.get("/camera/events", headers=viewer).status_code == 401
+
+
+def test_camera_auto_connect_is_limited_to_direct_local_listener():
+    from fastapi import Request
+    from app.camera.viewer import is_local_viewer
+
+    settings = Settings(camera_auto_connect_local=True)
+
+    def request(peer, host="10.10.0.10", forwarded=False):
+        headers = [(b"host", host.encode())]
+        if forwarded:
+            headers.append((b"x-forwarded-for", b"10.10.0.20"))
+        return Request({
+            "type": "http", "scheme": "http", "path": "/camera/viewer/session",
+            "server": ("10.10.0.10", 8000), "client": (peer, 49152), "headers": headers,
+        })
+
+    assert is_local_viewer(request("10.10.0.10"), settings)
+    assert not is_local_viewer(request("10.10.0.20"), settings)
+    assert not is_local_viewer(request("10.10.0.10", forwarded=True), settings)
+    assert not is_local_viewer(request("10.10.0.10", host="public.example"), settings)
+    assert not is_local_viewer(request("10.10.0.10"), Settings())

@@ -14,7 +14,10 @@ from app.camera.archive import complete_capture, save_capture_export, recent_rec
 from app.camera.events import events
 from app.camera.reviews import ReviewPayload, save_review
 from app.camera.settings import authorize_camera_key, camera_destination
-from app.camera.viewer import COOKIE, HEADER, MAX_AGE, authorize_viewer, has_viewer_session, make_viewer_session
+from app.camera.viewer import (
+    AUTO_DISABLED_COOKIE, COOKIE, HEADER, MAX_AGE,
+    authorize_viewer, has_viewer_session, is_local_viewer, make_viewer_session,
+)
 from app.capture_exports import export_location
 from app.validator.plate_parts import split_plate_text
 from app.vehicle import Vehicle, select_primary_vehicle
@@ -65,17 +68,26 @@ async def _store_camera_image(file: UploadFile, camera_id: str) -> dict:
 
 @router.post("/viewer/session", status_code=204)
 def start_viewer_session(request: Request, x_camera_key: str | None = Header(None)) -> Response:
-    session = make_viewer_session(x_camera_key, get_settings())
+    settings = get_settings()
+    local = not x_camera_key and request.headers.get(HEADER) == "1" and is_local_viewer(request, settings)
+    session = make_viewer_session(x_camera_key, settings, local=local)
     response = Response(status_code=204, headers={"Cache-Control": "no-store"})
-    response.set_cookie(COOKIE, session, max_age=MAX_AGE, path="/camera",
-                        httponly=True, samesite="strict", secure=request.url.scheme == "https")
+    cookie_options = {"path": "/camera", "httponly": True, "samesite": "strict",
+                      "secure": request.url.scheme == "https"}
+    response.set_cookie(COOKIE, session, max_age=MAX_AGE, **cookie_options)
+    response.delete_cookie(AUTO_DISABLED_COOKIE, **cookie_options)
     return response
 
 
 @router.get("/viewer/session")
 def check_viewer_session(request: Request, response: Response) -> dict:
     response.headers["Cache-Control"] = "no-store"
-    return {"connected": has_viewer_session(request, get_settings())}
+    settings = get_settings()
+    return {
+        "connected": has_viewer_session(request, settings),
+        "local_access": is_local_viewer(request, settings),
+        "auto_connect": is_local_viewer(request, settings) and AUTO_DISABLED_COOKIE not in request.cookies,
+    }
 
 
 @router.delete("/viewer/session", status_code=204)
@@ -83,8 +95,10 @@ def end_viewer_session(request: Request) -> Response:
     if request.headers.get(HEADER) != "1":
         raise HTTPException(status_code=403, detail="viewer request required")
     response = Response(status_code=204, headers={"Cache-Control": "no-store"})
-    response.delete_cookie(COOKIE, path="/camera", httponly=True, samesite="strict",
-                           secure=request.url.scheme == "https")
+    cookie_options = {"path": "/camera", "httponly": True, "samesite": "strict",
+                      "secure": request.url.scheme == "https"}
+    response.delete_cookie(COOKIE, **cookie_options)
+    response.set_cookie(AUTO_DISABLED_COOKIE, "1", max_age=MAX_AGE, **cookie_options)
     return response
 
 

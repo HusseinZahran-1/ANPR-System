@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from ipaddress import ip_address
 import time
 
 from fastapi import HTTPException, Request
@@ -12,6 +13,7 @@ from app.api.config import Settings
 from app.camera.settings import authorize_camera_key, camera_preferences
 
 COOKIE = "anpr_camera_viewer"
+AUTO_DISABLED_COOKIE = "anpr_camera_manual_connect"
 HEADER = "X-Camera-Viewer"
 MAX_AGE = 30 * 24 * 60 * 60
 
@@ -22,7 +24,22 @@ def _signature(expires: str, settings: Settings, credential: str) -> str:
     return hmac.new(key, expires.encode(), hashlib.sha256).hexdigest()
 
 
-def make_viewer_session(key: str | None, settings: Settings) -> str:
+def is_local_viewer(request: Request, settings: Settings) -> bool:
+    """Allow the operator workstation itself on a direct listener connection."""
+    server = request.scope.get("server")
+    if not settings.camera_auto_connect_local or not request.client or not server:
+        return False
+    if any(header in request.headers for header in
+           ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto")):
+        return False
+    try:
+        listener = ip_address(server[0])
+        return listener == ip_address(request.client.host) == ip_address(request.url.hostname)
+    except ValueError:
+        return False
+
+
+def make_viewer_session(key: str | None, settings: Settings, *, local: bool = False) -> str:
     _, override = camera_preferences()
     credential = override or settings.camera_api_key
     if not credential:
@@ -31,7 +48,7 @@ def make_viewer_session(key: str | None, settings: Settings) -> str:
         candidate = hashlib.sha256(key.encode()).hexdigest() if key else ""
     else:
         candidate = key or ""
-    if not hmac.compare_digest(candidate.encode(), credential.encode()):
+    if not local and not hmac.compare_digest(candidate.encode(), credential.encode()):
         raise HTTPException(status_code=401, detail="invalid camera API key")
     expires = str(int(time.time()) + MAX_AGE)
     return f"{expires}.{_signature(expires, settings, credential)}"

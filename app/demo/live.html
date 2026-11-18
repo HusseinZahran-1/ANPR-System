@@ -19,7 +19,8 @@
   <div class="card controls">
     <div class="row"><div class="field"><label for="endpoint">Camera API URL · fixed</label><input class="endpoint" id="endpoint" value="/camera/events" readonly></div><button class="secondary" id="copy">Copy URL</button></div>
     <div class="field" id="active-alias" hidden><label for="alias-url">Optional camera API alias</label><input class="endpoint" id="alias-url" readonly></div>
-    <div class="row"><div class="field"><label for="key">Camera API key</label><input id="key" type="password" autocomplete="off" placeholder="Enter the active camera key"></div><button id="connect">Start live view</button><button class="secondary" id="disconnect" disabled>Disconnect</button></div>
+    <div class="row"><div class="field"><label for="key">Camera API key</label><input id="key" type="password" autocomplete="off" placeholder="Enter the active camera key" aria-describedby="key-status">
+      <small class="hint" id="key-status" hidden>Camera key active on this browser.</small></div><button id="connect">Start live view</button><button class="secondary" id="disconnect" disabled>Disconnect</button></div>
     <div class="row"><div class="field"><label for="sample">Try the camera flow with a JPG or PNG</label><input id="sample" type="file" accept="image/jpeg,image/png"></div><button class="secondary" id="send">Send test capture</button></div>
     <div id="state" class="status" role="status" aria-live="polite">Enter the API key to start.</div>
   </div>
@@ -53,7 +54,7 @@
 const $=id=>document.getElementById(id),endpoint=$('endpoint'),key=$('key'),state=$('state'),imageBox=$('imageBox'),reviewImageBox=$('reviewImageBox'),analysis=$('analysis'),history=$('history');
 endpoint.value=new URL('/camera/events',location.href).href;
 let timer=null,lastSeenNewestId=null,selectedEvent=null,displayedEvent=null,displayedImage=null,reviewDirty=false,busy=false;
-let isapiSetup=null, connected=false;
+let isapiSetup=null, connected=false, localAccess=false;
 function setState(message,kind=''){state.textContent=message;state.className='status '+kind;}
 function headers(){return {'X-Camera-Viewer':'1'};}
 async function refreshBridgeUrl(){
@@ -121,27 +122,35 @@ function stop(){
   if(timer){clearInterval(timer);timer=null}
   $('connect').disabled=false;
   $('disconnect').disabled=true;
+  key.readOnly=false;
+  key.value='';
+  $('key-status').hidden=true;
 }
 function start(){
   if(connected)return;
   connected=true;
   $('connect').disabled=true;
   $('disconnect').disabled=false;
-  key.value='';
+  // This display value represents the active browser session, never the raw key.
+  key.value='camera-viewer-active';
+  key.readOnly=true;
+  $('key-status').hidden=false;
   refreshBridgeUrl().catch(()=>{});
   poll();
   timer=setInterval(poll,2000);
 }
-$('connect').onclick=async()=>{
-  if(!key.value.trim()){setState('Enter the camera API key first.','error');return}
+async function connect(){
+  if(connected)return;
+  const cameraKey=key.value.trim();
+  if(!cameraKey&&!localAccess){setState('Enter the camera API key first.','error');return}
   $('connect').disabled=true;
   try{
-    await jsonResponse(await fetch('/camera/viewer/session',{
-      method:'POST',headers:{'X-Camera-Key':key.value.trim()}
-    }));
+    const auth=cameraKey?{'X-Camera-Key':cameraKey}:headers();
+    await jsonResponse(await fetch('/camera/viewer/session',{method:'POST',headers:auth}));
     start();
   }catch(error){setState(error.message,'error');$('connect').disabled=false}
-};
+}
+$('connect').onclick=connect;
 key.addEventListener('keydown',event=>{if(event.key==='Enter'&&!$('connect').disabled)$('connect').click()});
 $('disconnect').onclick=async()=>{
   try{
@@ -156,7 +165,12 @@ $('disconnect').onclick=async()=>{
   }catch(error){setState(error.message,'error')}
 };
 fetch('/camera/viewer/session',{headers:headers(),cache:'no-store'})
-  .then(jsonResponse).then(session=>{if(session.connected)start()}).catch(()=>{});
+  .then(jsonResponse).then(session=>{
+    localAccess=session.local_access;
+    if(session.connected)start();
+    else if(session.auto_connect)connect();
+    else if(localAccess)setState('Click Start live view to reconnect from this workstation.');
+  }).catch(()=>{});
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(endpoint.value);setState('Camera upload URL copied.')}catch{endpoint.select();setState('Select and copy the camera upload URL.')}};
 $('showIsapi').onclick=async()=>{if(!connected){setState('Start the live view first.','error');return}try{isapiSetup=await jsonResponse(await fetch('/camera/isapi2/config',{headers:headers(),cache:'no-store'}));const box=$('isapiSettings');box.replaceChildren();for(const [label,value] of [['Version',isapiSetup.version],['Host IP Address/Domain Name',isapiSetup.host_ip||'Check this computer’s LAN IP'],['Host Port',isapiSetup.host_port],['Host URL',isapiSetup.host_url],['Heartbeat Interval',`${isapiSetup.heartbeat_interval_s} s`],['Uploaded Picture Type',isapiSetup.uploaded_picture_type],['Authentication Mode',isapiSetup.authentication_mode],['Platform Response Verification',isapiSetup.platform_response_verification?'On':'Off']]){addText(box,'strong',label);addText(box,'span',value)}$('copyIsapi').disabled=false;setState('Camera settings loaded. Keep the Host URL private.','connected')}catch(error){setState(error.message,'error')}};
 $('copyIsapi').onclick=async()=>{if(!isapiSetup)return;try{await navigator.clipboard.writeText(isapiSetup.host_url);setState('ISAPI2 Host URL copied.','connected')}catch{setState('Copy the Host URL shown above.','error')}};
