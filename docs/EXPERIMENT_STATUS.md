@@ -178,3 +178,6 @@ These reused cohorts do not establish field accuracy. Twenty derived backgrounds
 remain empty; foreign format false matches remain 8/9. Real HTTP/live/image
 checks cover 55 isolated events without changing the physical-camera archive.
 See [complete evidence and remaining errors](RECOVERY_AND_FRAGMENTS.md).
+
+See the [18 November development snapshot](EVALUATION_SNAPSHOT.md) for exact-match,
+CER, raw/post-geometry precision/recall/F1 and the limits of the selected preview.
