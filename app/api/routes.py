@@ -13,6 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.api.config import get_settings
 from app.pipeline import Pipeline
+from app.ocr.authority_regions import AuthorityReaderUnavailable
 
 router = APIRouter()
 _pipeline: Pipeline | None = None
@@ -31,6 +32,12 @@ def _get_pipeline() -> Pipeline:
                     raise FileNotFoundError(f"detector model not found: {settings.detector_path}")
                 if not settings.ocr_path.is_file():
                     raise FileNotFoundError(f"OCR model not found: {settings.ocr_path}")
+                if settings.authority_path is not None and not settings.authority_path.is_file():
+                    raise FileNotFoundError('configured authority OCR model is missing')
+                if settings.fallback_detector_path is not None and not settings.fallback_detector_path.is_file():
+                    raise FileNotFoundError('configured fallback detector model is missing')
+                if settings.recovery_detector_path is not None and not settings.recovery_detector_path.is_file():
+                    raise FileNotFoundError('configured recovery detector model is missing')
                 _pipeline = Pipeline(
                     detector_path=settings.detector_path,
                     ocr_path=settings.ocr_path,
@@ -40,6 +47,14 @@ def _get_pipeline() -> Pipeline:
                     max_plates=settings.detection_max_plates,
                     layout_mode=settings.ocr_layout_mode,
                     device=settings.device,
+                    authority_model_path=settings.authority_path,
+                    authority_min_prefix_confidence=settings.authority_min_prefix_confidence,
+                    fallback_detector_path=settings.fallback_detector_path,
+                    fallback_det_conf=settings.fallback_detection_conf,
+                    recovery_detector_path=settings.recovery_detector_path,
+                    recovery_det_conf=settings.recovery_detection_conf,
+                    recovery_layout_mode=settings.recovery_ocr_layout_mode,
+                    merge_fallback_fragments=settings.merge_fallback_fragments,
                 )
     return _pipeline
 
@@ -57,6 +72,12 @@ def _get_camera_pipeline() -> Pipeline:
                     raise FileNotFoundError(f"camera detector model not found: {detector_path}")
                 if not settings.ocr_path.is_file():
                     raise FileNotFoundError(f"OCR model not found: {settings.ocr_path}")
+                if settings.authority_path is not None and not settings.authority_path.is_file():
+                    raise FileNotFoundError('configured authority OCR model is missing')
+                if settings.fallback_detector_path is not None and not settings.fallback_detector_path.is_file():
+                    raise FileNotFoundError('configured fallback detector model is missing')
+                if settings.recovery_detector_path is not None and not settings.recovery_detector_path.is_file():
+                    raise FileNotFoundError('configured recovery detector model is missing')
                 _camera_pipeline = Pipeline(
                     detector_path=detector_path,
                     ocr_path=settings.ocr_path,
@@ -66,6 +87,14 @@ def _get_camera_pipeline() -> Pipeline:
                     max_plates=settings.detection_max_plates,
                     layout_mode=settings.ocr_layout_mode,
                     device=settings.device,
+                    authority_model_path=settings.authority_path,
+                    authority_min_prefix_confidence=settings.authority_min_prefix_confidence,
+                    fallback_detector_path=settings.fallback_detector_path,
+                    fallback_det_conf=settings.fallback_detection_conf,
+                    recovery_detector_path=settings.recovery_detector_path,
+                    recovery_det_conf=settings.recovery_detection_conf,
+                    recovery_layout_mode=settings.recovery_ocr_layout_mode,
+                    merge_fallback_fragments=settings.merge_fallback_fragments,
                 )
     return _camera_pipeline
 
@@ -84,7 +113,10 @@ def health() -> dict:
     detector_ok = settings.detector_path.is_file()
     camera_detector_ok = settings.camera_detector_path is None or settings.camera_detector_path.is_file()
     ocr_ok = settings.ocr_path.is_file()
-    ready = detector_ok and camera_detector_ok and ocr_ok
+    authority_ok = settings.authority_path is None or settings.authority_path.is_file()
+    fallback_ok = settings.fallback_detector_path is None or settings.fallback_detector_path.is_file()
+    recovery_ok = settings.recovery_detector_path is None or settings.recovery_detector_path.is_file()
+    ready = detector_ok and camera_detector_ok and ocr_ok and authority_ok and fallback_ok and recovery_ok
     return {
         "status": "ready" if ready else "model_missing",
         "models_loaded": _pipeline is not None,
@@ -92,6 +124,12 @@ def health() -> dict:
         "detector_available": detector_ok,
         "camera_detector_available": camera_detector_ok,
         "ocr_available": ocr_ok,
+        "authority_region_enabled": settings.authority_path is not None,
+        "authority_region_available": authority_ok,
+        "fallback_detector_enabled": settings.fallback_detector_path is not None,
+        "fallback_detector_available": fallback_ok,
+        "recovery_detector_enabled": settings.recovery_detector_path is not None,
+        "recovery_detector_available": recovery_ok,
         "device": settings.device,
     }
 
@@ -128,6 +166,8 @@ async def analyze_upload(file: UploadFile, *, camera: bool = False) -> dict:
                 return await run_in_threadpool(_run_image, image_path, safe_name, camera)
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
+            except AuthorityReaderUnavailable as exc:
+                raise HTTPException(status_code=503,detail=str(exc)) from exc
             except (ValueError, OSError) as exc:
                 raise HTTPException(status_code=422, detail=f"could not process image: {exc}") from exc
             except Exception as exc:
@@ -140,3 +180,9 @@ async def analyze_upload(file: UploadFile, *, camera: bool = False) -> dict:
 async def predict(file: UploadFile = File(...)) -> dict:
     """Accept one JPEG/PNG scene and return detections, OCR and Jordanian decisions."""
     return await analyze_upload(file)
+
+
+@router.post('/demo/predict')
+async def predict_demo(file: UploadFile = File(...)) -> dict:
+    """Gate-camera demo inference using the configured camera detector, no archive."""
+    return await analyze_upload(file,camera=True)

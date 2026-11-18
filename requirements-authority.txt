@@ -1,0 +1,2 @@
+# Optional local authority-prefix recognizer; install the base requirements first.
+easyocr==1.7.2

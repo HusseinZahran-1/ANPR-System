@@ -1,0 +1,8 @@
+# Shared API pins. Keep the web stack local to the ANPR environment.
+fastapi==0.115.12
+uvicorn==0.34.0
+starlette==0.46.2
+pydantic==2.10.6
+python-multipart==0.0.20
+httpx==0.28.1
+python-dotenv==1.1.1

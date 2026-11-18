@@ -12,9 +12,11 @@ Use Python 3.12, install the documented dependencies, and run `python -m pytest 
    belong to one task branch. Keep `main` stable.
 4. Make focused changes, run relevant tests, inspect the diff and staged files.
 5. Use Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`.
-6. Obtain owner approval before committing for this initial release, before
-   every push, and before merging a pull request. Never merge automatically.
-7. After an approved push, open a pull request describing behavior, tests,
+6. The owner has authorized ongoing publication of reviewed source and
+   documentation updates. After validation and staged-content review, commit
+   and push updates to the task branch without requesting approval again.
+   Obtain owner approval before merging a pull request. Never merge automatically.
+7. After a push, open or update a pull request describing behavior, tests,
    limitations, and model/data dependencies. Prefer reviewed changes to main.
 
 Never commit real plates, footage, datasets, annotations, vehicle metadata,

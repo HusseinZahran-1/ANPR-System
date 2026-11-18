@@ -10,11 +10,12 @@ does not establish the plate's country or authorize an access decision.
 
 - YOLO plate detection and CRNN/CTC OCR, with separate confidence signals.
 - Crop preprocessing, layout handling, and Jordanian text validation.
-- Review suggestions for ambiguous CD/SN authority prefixes.
+- Optional visual CD/SN region reading with separate evidence and mandatory review.
 - FastAPI JPEG/PNG upload endpoint and an English browser demo.
 - Authenticated camera uploads and direct ISAPI2 multipart image ingestion.
 - Live browser polling, durable local image archive, and quarantined reviews.
 - Optional camera detector override and single-plate gate settings.
+- Optional primary-first fallback detector with separate confidence and mandatory review.
 
 ## Requirements and Windows installation
 
@@ -37,7 +38,6 @@ python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-The clone URL is the proposed repository location, pending owner approval.
 For GPU execution, install compatible CUDA PyTorch wheels instead of CPU
 wheels before installing requirements. The pins reflect the local development
 environment; a new dependency installation has not been validated in a clean
@@ -97,6 +97,12 @@ app/demo/       English upload and live interfaces
 tests/          public tests using synthetic inputs and model stubs
 ```
 
+For reviewed public-source acquisition, see [Public data](docs/PUBLIC_DATA.md).
+For measured detector/OCR comparisons and their limits, see
+[Development experiment results](docs/EXPERIMENT_STATUS.md) and the
+[model upgrade policy](docs/MODEL_UPGRADES.md).
+The importer saves images locally in quarantine without admitting them to training.
+
 Historical training scripts, private annotations, experiments, and deployment
 notes remain in the owner's local workspace. They are not part of this public
 source snapshot. No real plate image or capture is supplied as an example.
@@ -105,13 +111,13 @@ source snapshot. No real plate image or capture is supplied as an example.
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python -m pytest tests -q
+python -m pytest -q
 ```
 
 Most tests use synthetic arrays/images and stub models. Checkpoint-specific
 tests skip when the optional historical checkpoint is absent. Unit tests do
-not establish real-camera OCR accuracy. The proposed GitHub Actions workflow
-runs CPU tests; its remote execution has not yet been verified.
+not establish real-camera OCR accuracy. The GitHub Actions workflow runs CPU
+tests; local tests and remote CI are separate evidence.
 
 ## Limits and next work
 
@@ -129,3 +135,32 @@ A project license has not been selected. Public visibility does not grant a
 general license to reuse the code. Review third-party dependency and model
 licenses, including Ultralytics and OCR architecture provenance, before release
 or redistribution. Model weights and datasets require a separate rights review.
+
+## Visual authority reader
+
+See [optional CD/SN region OCR](docs/AUTHORITY_REGION_OCR.md) for setup, measured
+development results and limitations. Manual demo uploads use `/demo/predict`,
+which shares the configured camera detector; general `/predict` keeps its own
+detector configuration. Start the local MVP manually with `./run_mvp.ps1`.
+
+## Experimental two-row preprocessing
+
+An optional geometry-based layout fixes four reused training-crop readings but
+does not fix detector misses on newly reviewed external full scenes. It remains
+disabled by default. See [two-row layout evidence](docs/ROW_LAYOUT.md).
+
+## Broader-image detection fallback
+
+A validated optional second detector is tried only after the primary finds no
+boxes. Combined with two-row preprocessing, it reads four of ten reused external
+validation scenes previously missed entirely, while measured camera/older-scene
+results remain unchanged. Six external scenes still fail; independent field
+accuracy and country rejection remain unresolved. See [setup and evidence](docs/FALLBACK_DETECTOR.md).
+
+The optional [recovery and aligned-fragment pilot](docs/RECOVERY_AND_FRAGMENTS.md)
+addresses two-row misses and split plate boxes in the single-plate demo.
+It remains a development pilot with mandatory review and separately reported
+raw detector errors; the public defaults keep both new features off.
+
+Final readings also expose [separate plate code and number](docs/PLATE_PARTS.md)
+in the API, demo and live view, with unresolved boundaries left explicit.
