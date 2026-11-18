@@ -67,6 +67,19 @@ def _assign_plates(vehicles: list[Vehicle], plates: list[dict]) -> None:
             matches[0].plate_indices.append(index)
 
 
+
+def select_primary_vehicle(vehicles: list[Vehicle]) -> Vehicle | None:
+    """Prefer the vehicle linked to the first plate, then the largest visible vehicle."""
+    if not vehicles:
+        return None
+    return max(vehicles, key=lambda vehicle: (
+        bool(vehicle.plate_indices),
+        -min(vehicle.plate_indices, default=0),
+        (vehicle.box[2] - vehicle.box[0]) * (vehicle.box[3] - vehicle.box[1]),
+        vehicle.det_conf,
+    ))
+
+
 class VehicleAttributes:
     """Rank a fixed label set with OpenAI CLIP ViT-B/32 on detected crops."""
 
@@ -109,28 +122,24 @@ class VehicleAttributes:
             return None
         return labels[indices[0].item()]
 
-    def annotate(self, scene, vehicles: list[Vehicle]) -> None:
-        eligible = []
-        for vehicle in vehicles:
-            crop = crop_from_box(scene, vehicle.box)
-            if min(crop.shape[:2]) >= 40:
-                square = ImageOps.pad(Image.fromarray(crop), (224, 224), color=(123, 117, 104))
-                eligible.append((vehicle, self.preprocess(square), min(crop.shape[:2])))
-        if not eligible:
+    def annotate(self, scene, vehicle: Vehicle) -> None:
+        crop = crop_from_box(scene, vehicle.box)
+        size = min(crop.shape[:2])
+        if size < 40:
             return
-
+        square = ImageOps.pad(Image.fromarray(crop), (224, 224), color=(123, 117, 104))
         with self.torch.inference_mode():
-            batch = self.torch.stack([item[1] for item in eligible]).to(self.device)
-            features = self.torch.nn.functional.normalize(self.model.encode_image(batch).float())
-            for (vehicle, _, size), feature in zip(eligible, features, strict=True):
-                kind = vehicle.detection_class
-                if kind in ("car", "truck"):
-                    style = self._label(feature, "type", minimum=0.22, margin=0.010)
-                    vehicle.vehicle_type = style or vehicle.vehicle_type
-                vehicle.color = self._label(feature, kind + "_color", minimum=0.22, margin=0.010)
-                if size >= 80 and kind != "bus":
-                    bank = "motorcycle_make" if kind == "motorcycle" else "car_make"
-                    vehicle.make = self._label(feature, bank, minimum=0.24, margin=0.014)
+            image = self.preprocess(square).unsqueeze(0).to(self.device)
+            features = self.torch.nn.functional.normalize(self.model.encode_image(image).float())
+            feature = features[0]
+            kind = vehicle.detection_class
+            if kind in ("car", "truck"):
+                style = self._label(feature, "type", minimum=0.22, margin=0.010)
+                vehicle.vehicle_type = style or vehicle.vehicle_type
+            vehicle.color = self._label(feature, kind + "_color", minimum=0.22, margin=0.010)
+            if size >= 80 and kind != "bus":
+                bank = "motorcycle_make" if kind == "motorcycle" else "car_make"
+                vehicle.make = self._label(feature, bank, minimum=0.24, margin=0.014)
 
 
 class VehicleAnalyzer:
@@ -162,12 +171,13 @@ class VehicleAnalyzer:
                                         det_conf=round(conf, 6), vehicle_type=kind.title()))
 
         _assign_plates(vehicles, plates)
+        primary = select_primary_vehicle(vehicles)
+        vehicles = [primary] if primary is not None else []
         if self.attributes is None:
             return vehicles, "detection_only"
-        if vehicles:
-            # Attribute failures should not discard vehicle boxes or plate readings.
+        if primary is not None:
             try:
-                self.attributes.annotate(load_scene(path), vehicles)
+                self.attributes.annotate(load_scene(path), primary)
             except Exception:
                 logger.exception("Vehicle attribute inference failed")
                 return vehicles, "detection_only"

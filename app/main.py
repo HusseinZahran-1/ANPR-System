@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.keys import router as keys_router
 from app.api.routes import router
 from app.camera.routes import router as camera_router
 from app.camera.isapi2 import router as isapi2_router
@@ -30,6 +31,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(router)
+app.include_router(keys_router)
 app.include_router(camera_router)
 app.include_router(isapi2_router)
 app.mount("/assets", StaticFiles(directory=Path(__file__).parent / "demo" / "assets"), name="assets")
@@ -52,3 +54,12 @@ def live() -> FileResponse:
     """Serve the local camera monitor."""
     return FileResponse(Path(__file__).parent / "demo" / "live.html",
                         media_type="text/html; charset=utf-8")
+
+
+
+@app.get("/api", include_in_schema=False)
+def api_console() -> FileResponse:
+    """Serve the English key management and inference console."""
+    return FileResponse(Path(__file__).parent / "demo" / "api.html",
+                        media_type="text/html; charset=utf-8",
+                        headers={"Cache-Control": "no-store"})

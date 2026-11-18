@@ -13,7 +13,7 @@
 </head>
 <body>
 <main>
-  <div class="top"><span>▣ JORDAN ANPR · LIVE CAMERA</span><a href="/demo">Single-image demo</a></div>
+  <div class="top"><span>▣ JORDAN ANPR · LIVE CAMERA</span><nav class="view-links"><a href="/demo">Single-image demo</a><a href="/api">API console</a></nav></div>
   <h1>Watch camera captures as they arrive</h1>
   <p class="intro">Give the camera developer the upload endpoint below. Each capture is analyzed automatically and appears here when processing finishes.</p>
   <div class="card controls">
@@ -80,6 +80,8 @@ function showAnalysis(event){
   addText(analysis,'div','Human review required before use.','detail');
   const vehicleSection=anprResults.vehicleSection(event.result);
   if(vehicleSection)analysis.append(vehicleSection);
+  const exportNote=anprResults.exportSummary(event.result);
+  if(exportNote)analysis.append(exportNote);
 }
 function selectReview(event,img){
   selectedEvent=event;reviewDirty=false;

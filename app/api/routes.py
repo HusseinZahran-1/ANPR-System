@@ -11,13 +11,15 @@ from functools import lru_cache
 from ipaddress import ip_address
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Security, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Security, UploadFile
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ConfigDict, Field
 from PIL import Image, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
 from app.api.config import get_settings
+from app.api.keys import valid_issued_key
+from app.capture_exports import CaptureExport, save_export
 from app.pipeline import Pipeline
 from app.vehicle import Vehicle, VehicleStatus, vehicle_evidence
 from app.ocr.authority_regions import AuthorityReaderUnavailable
@@ -158,7 +160,7 @@ def health() -> dict:
     }
 
 
-async def analyze_upload(file: UploadFile, *, camera: bool = False) -> dict:
+async def analyze_upload(file: UploadFile, *, camera: bool = False, export_source: str | None = None) -> dict:
     """Analyze a checked upload with the general or configured camera detector."""
     settings = get_settings()
     declared_type = (file.content_type or "").split(";")[0].strip().lower()
@@ -187,7 +189,7 @@ async def analyze_upload(file: UploadFile, *, camera: bool = False) -> dict:
             image_path = Path(temp_dir) / f"input{suffix}"
             image_path.write_bytes(content)
             try:
-                return await run_in_threadpool(_run_image, image_path, safe_name, camera)
+                result = await run_in_threadpool(_run_image, image_path, safe_name, camera)
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
             except AuthorityReaderUnavailable as exc:
@@ -196,6 +198,14 @@ async def analyze_upload(file: UploadFile, *, camera: bool = False) -> dict:
                 raise HTTPException(status_code=422, detail=f"could not process image: {exc}") from exc
             except Exception as exc:
                 raise HTTPException(status_code=500, detail="inference failed") from exc
+            if export_source is not None:
+                try:
+                    result["export"] = await run_in_threadpool(
+                        save_export, content, suffix, result, source=export_source,
+                    )
+                except OSError as exc:
+                    raise HTTPException(status_code=503, detail="capture export could not be saved") from exc
+            return result
     finally:
         await file.close()
 
@@ -208,8 +218,8 @@ async def predict(file: UploadFile = File(...)) -> dict:
 
 @router.post('/demo/predict')
 async def predict_demo(file: UploadFile = File(...)) -> dict:
-    """Gate-camera demo inference using the configured camera detector, no archive."""
-    return await analyze_upload(file,camera=True)
+    """Analyze a demo upload and save its original image and XML together."""
+    return await analyze_upload(file, camera=True, export_source="upload")
 
 
 
@@ -246,6 +256,7 @@ class InferenceResponse(BaseModel):
     ocr_results: list[ReadingEvidence]
     vehicles: list[Vehicle] = Field(default_factory=list)
     vehicle_status: VehicleStatus = "disabled"
+    export: CaptureExport | None = None
     validations: list[dict]
     decisions: list[dict]
     meta: dict
@@ -256,9 +267,12 @@ _inference_key_header = APIKeyHeader(name="X-Inference-Key", auto_error=False)
 
 def _authorize_inference(request: Request, key: str | None = Security(_inference_key_header)) -> None:
     settings = get_settings()
-    if settings.inference_api_key:
-        if key and hmac.compare_digest(key.encode(), settings.inference_api_key.encode()):
-            return
+    if settings.inference_api_key and key and hmac.compare_digest(
+            key.encode(), settings.inference_api_key.encode()):
+        return
+    if settings.inference_admin_key and key and valid_issued_key(key):
+        return
+    if settings.inference_api_key or settings.inference_admin_key:
         raise HTTPException(status_code=401, detail="invalid inference API key")
     try:
         local = request.client is not None and ip_address(request.client.host).is_loopback
@@ -315,11 +329,11 @@ def inference_ready() -> dict:
         503: "Profile unavailable or service key missing",
     }.items()},
 )
-async def predict_v1(file: UploadFile = File(...)) -> dict:
-    """Analyze one scene with the gate camera profile without creating an event."""
+async def predict_v1(file: UploadFile = File(...), save_xml: bool = Form(False)) -> dict:
+    """Analyze a scene and optionally save an image/XML pair."""
     try:
         profile, checkpoints = await run_in_threadpool(load_inference_profile)
-        result = await analyze_upload(file, camera=True)
+        result = await analyze_upload(file, camera=True, export_source="api" if save_xml else None)
     except HTTPException as exc:
         if exc.status_code == 422 and str(exc.detail).startswith("could not process image:"):
             raise HTTPException(status_code=422, detail="could not process image") from exc

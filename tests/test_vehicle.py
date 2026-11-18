@@ -62,3 +62,15 @@ def test_gate_adds_vehicle_evidence_without_changing_legacy_prediction(monkeypat
     assert gate["vehicles"] == []
     assert gate["detections"][0]["box"] == [20, 42, 40, 48]
     assert "vehicles" not in routes._run_image(scene, "scene.jpg")
+
+
+def test_primary_vehicle_prefers_plate_then_largest_visible_vehicle():
+    from app.vehicle import select_primary_vehicle
+
+    vehicle = Vehicle(box=(0, 0, 100, 100), detection_class="car", det_conf=0.5, vehicle_type="SUV")
+    background = Vehicle(box=(110, 0, 160, 40), detection_class="car",
+                         det_conf=0.95, vehicle_type="Sedan")
+    assert select_primary_vehicle([background, vehicle]) is vehicle
+    background.plate_indices = [0]
+    assert select_primary_vehicle([background, vehicle]) is background
+    assert select_primary_vehicle([]) is None

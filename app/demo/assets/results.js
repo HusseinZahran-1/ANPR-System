@@ -49,17 +49,17 @@
       return section;
     }
 
-    vehicles.forEach((vehicle, index) => {
+    vehicles.forEach(vehicle => {
       const card = element('div', undefined, 'vehicle-card');
       const plateRefs = (vehicle.plate_indices ?? []).map(i => i + 1);
       const association = plateRefs.length
         ? ` · Linked to plate ${plateRefs.join(', ')}`
         : ' · No plate linked';
-      card.append(element('div', `Vehicle ${index + 1}${association}`, 'vehicle-note'));
+      card.append(element('div', `Primary vehicle${association}`, 'vehicle-note'));
       card.append(fields([
-        ['Type', vehicle.vehicle_type || 'Unknown'],
-        ['Color', vehicle.color ?? 'Unknown'],
-        ['Make', vehicle.make ?? 'Unknown'],
+        ['Vehicle category', vehicle.vehicle_type || 'Unknown', 'vehicle-category'],
+        ['Vehicle color', vehicle.color ?? 'Unknown', 'vehicle-color'],
+        ['Make', vehicle.make ?? 'Unknown', 'vehicle-make'],
       ]));
       section.append(card);
     });
@@ -78,13 +78,20 @@
     ctx.setLineDash([6 * scale, 4 * scale]);
     ctx.font = `bold ${12 * scale}px Segoe UI`;
     ctx.textBaseline = 'top';
-    for (const [index, vehicle] of (vehicles ?? []).entries()) {
+    for (const vehicle of vehicles ?? []) {
       const [x1, y1, x2, y2] = vehicle.box;
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-      ctx.fillText(`Vehicle ${index + 1}`, x1 + 3 * scale, y1 + 3 * scale);
+      ctx.fillText('Vehicle', x1 + 3 * scale, y1 + 3 * scale);
     }
     ctx.restore();
   }
 
-  window.anprResults = { plateFields, vehicleSection, drawVehicles };
+  function exportSummary(result) {
+    const saved = result?.export;
+    if (!saved) return null;
+    return element('p', `Saved together: ${saved.image_filename} and ${saved.xml_filename}`,
+                   'export-note');
+  }
+
+  window.anprResults = { plateFields, vehicleSection, drawVehicles, exportSummary };
 })();

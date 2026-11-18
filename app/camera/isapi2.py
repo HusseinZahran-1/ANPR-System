@@ -20,10 +20,11 @@ from pathlib import Path
 from fastapi import APIRouter, Header, HTTPException, Request, Response, UploadFile
 from PIL import Image, UnidentifiedImageError
 from starlette.datastructures import Headers
+from starlette.concurrency import run_in_threadpool
 
 from app.api.config import get_settings
 from app.api.routes import analyze_upload
-from app.camera.archive import complete_capture, save_capture
+from app.camera.archive import complete_capture, save_capture_export, save_capture
 from app.camera.events import events
 
 router = APIRouter(prefix="/camera/isapi2", tags=["camera"])
@@ -122,6 +123,7 @@ async def receive_isapi2(request: Request, token: str) -> dict:
                             camera_id=camera_id, original_filename=filename)
     try:
         result = await analyze_upload(upload, camera=True)
+        result["export"] = await run_in_threadpool(save_capture_export, archived, image, result)
     except Exception as exc:
         complete_capture(archived, error=exc)
         raise

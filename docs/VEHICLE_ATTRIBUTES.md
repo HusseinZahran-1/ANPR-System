@@ -38,11 +38,17 @@ files.
 
 ## Gate API and camera history
 
+The gate pipeline publishes and classifies at most one vehicle. It prefers a
+vehicle uniquely linked to the first returned plate. If none is linked, it
+uses the largest visible detection, with detector score as the tie-breaker.
+The UI displays separate category and color cards. Categories include SUV,
+Sedan, Motorcycle, Pickup, Hatchback, Van, and other recognized body styles.
+
 `/demo/predict`, `/v1/predict` and new camera events include:
 
 - `vehicle_status` with `ready`, `detection_only`, `unavailable` or `disabled`.
 - `vehicles[]` with the upright-image box, detector class and score, body type,
-  optional color and make, and review flag.
+  optional color and make, and review flag. There is at most one entry.
 - `vehicles[].plate_indices` with zero-based indexes into `detections` and
   `ocr_results`. A plate links to a vehicle when a unique vehicle box covers at
   least 85% of the plate. Ambiguous and missing links remain empty.

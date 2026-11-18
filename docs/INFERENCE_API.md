@@ -23,7 +23,9 @@ read-only while a worker uses them.
   missing or incompatible checkpoint returns 503. The legacy `/health` reports
   file availability.
 - `POST /v1/predict` accepts one multipart `file` and returns JSON. It creates
-  no camera record. Clients can retry this operation without duplicating an event.
+  no camera record. The optional multipart field `save_xml=true` saves a paired
+  original image and XML report. Requests with saving enabled create a new
+  export on each successful submission, including repeated submissions.
 
 The fixed profile identifier is `gate-camera-v1`. It uses
 `CAMERA_DETECTOR_PATH` when set, or `MODEL_DETECTOR_PATH` as the default
@@ -37,7 +39,7 @@ inference behavior. `/predict` keeps the general profile and `/demo/predict`
 uses the gate profile.
 
 Supply a dedicated `INFERENCE_API_KEY` when binding to a network interface.
-Clients send it as `X-Inference-Key`. When the key is empty, v1 accepts only
+Clients send it as `X-Inference-Key`. With no inference key or admin key configured, v1 accepts only
 direct loopback access with a loopback bind. Set a key before putting the service
 behind any proxy, terminate HTTPS there for remote backend clients, and route
 only the intended endpoints. The legacy upload routes retain their existing
@@ -106,3 +108,16 @@ express model confidence. A format match still requires review and
 `country_verified` remains false.
 
 The gate profile can also return [optional vehicle evidence](VEHICLE_ATTRIBUTES.md).
+
+
+## API console and issued keys
+
+Open `/api` to generate, list, test and revoke inference keys. Configure a
+separate `INFERENCE_ADMIN_KEY` privately. Key-management calls use
+`X-Inference-Admin-Key`; they return the new client key only once. The database
+stores SHA-256 digests and key metadata. Set `INFERENCE_KEY_DB` to relocate it.
+Existing `INFERENCE_API_KEY` clients continue working. Issued keys grant
+access to `/v1/ready` and `/v1/predict`; the camera credentials and
+administrator authority are separate.
+
+See [capture exports](CAPTURE_EXPORTS.md) for layout and XML fields.
