@@ -264,3 +264,84 @@ def test_fragment_env_rejects_typo(monkeypatch):
     monkeypatch.setenv("FALLBACK_MERGE_FRAGMENTS","flase")
     with pytest.raises(ValueError,match="boolean"):
         Settings.from_env()
+
+
+def test_versioned_inference_contract(api, monkeypatch, tmp_path):
+    client, settings = api
+    settings.inference_api_key = "integration-test-key"
+    settings.camera_api_key = "camera-test-key"
+    camera = tmp_path / "camera.pt"
+    camera.write_bytes(b"camera")
+    settings.camera_detector_model_path = str(camera)
+    calls = []
+
+    class StubPipeline:
+        def __init__(self, **kwargs):
+            calls.append(kwargs["detector_path"])
+
+        def run(self, path):
+            return {
+                "detections": [{"box": [1, 2, 6, 7], "det_conf": 0.8}],
+                "ocr_results": [{
+                    "crop_box": [1, 2, 6, 7], "text": "012345", "ocr_conf": 0.9,
+                    "plate_parts": {"full_text": "012345", "plate_code": None,
+                                    "plate_number": None, "split_basis": "unresolved",
+                                    "requires_human_review": True},
+                }],
+                "validations": [],
+                "decisions": [],
+                "meta": {"detector": str(camera), "requires_human_review": True},
+            }
+
+    monkeypatch.setattr(routes, "Pipeline", StubPipeline)
+    assert client.get("/v1/ready", headers={"X-Camera-Key": settings.camera_api_key}).status_code == 401
+    headers = {"X-Inference-Key": settings.inference_api_key}
+    ready = client.get("/v1/ready", headers=headers)
+    assert ready.status_code == 200
+    response = client.post("/v1/predict", headers=headers,
+                           files={"file": ("x.png", png_bytes(), "image/png")})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["profile"] == ready.json()["profile"] == "gate-camera-v1"
+    assert data["checkpoints"] == ready.json()["checkpoints"]
+    assert len(data["checkpoints"]["primary"]) == 64
+    assert data["ocr_results"][0]["plate_parts"]["full_text"] == "012345"
+    assert data["ocr_results"][0]["plate_parts"]["plate_code"] is None
+    assert str(camera) not in response.text
+    assert calls == [camera]
+
+
+def test_versioned_readiness_hides_missing_checkpoint_path(api):
+    client, settings = api
+    settings.inference_api_key = "integration-test-key"
+    Path(settings.ocr_model_path).unlink()
+    response = client.get("/v1/ready", headers={"X-Inference-Key": settings.inference_api_key})
+    assert response.status_code == 503
+    assert response.json() == {"detail": "inference profile unavailable"}
+
+
+def test_gate_recovery_options_do_not_change_general_profile(api, monkeypatch, tmp_path):
+    client, settings = api
+    fallback, recovery = tmp_path / "fallback.pt", tmp_path / "recovery.pt"
+    fallback.touch()
+    recovery.touch()
+    settings.fallback_detector_model_path = str(fallback)
+    settings.camera_recovery_detector_model_path = str(recovery)
+    settings.camera_merge_fallback_fragments = True
+    options = []
+
+    class StubPipeline:
+        def __init__(self, **kwargs):
+            options.append(kwargs)
+
+        def run(self, path):
+            return {"detections": [], "ocr_results": []}
+
+    monkeypatch.setattr(routes, "Pipeline", StubPipeline)
+    files = {"file": ("x.png", png_bytes(), "image/png")}
+    assert client.post("/predict", files=files).status_code == 200
+    assert client.post("/demo/predict", files=files).status_code == 200
+    assert options[0]["recovery_detector_path"] is None
+    assert options[0]["merge_fallback_fragments"] is False
+    assert options[1]["recovery_detector_path"] == recovery
+    assert options[1]["merge_fallback_fragments"] is True

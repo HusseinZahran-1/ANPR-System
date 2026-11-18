@@ -6,6 +6,13 @@ checks text against Jordanian format rules, and returns structured results.
 Development is ongoing. Every reading requires human review; a format match
 does not establish the plate's country or authorize an access decision.
 
+Start manually with `.\run_mvp.ps1 -RequireModels` after installing
+dependencies and specifying trusted weights. Use `/demo` for uploads,
+`/live` for camera history, and `/docs` for OpenAPI.
+
+- [Inference API and backend examples](docs/INFERENCE_API.md)
+- [Deployment, camera settings and workspace layout](docs/DEPLOYMENT.md)
+
 ## Implemented features
 
 - YOLO plate detection and CRNN/CTC OCR, with separate confidence signals.

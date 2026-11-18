@@ -120,6 +120,8 @@ class Settings:
     fallback_detector_model_path: str = ""
     fallback_detection_conf: float = .05
     recovery_detector_model_path: str = ""
+    camera_recovery_detector_model_path: str = ""
+    camera_merge_fallback_fragments: bool | None = None
     recovery_detection_conf: float = .05
     merge_fallback_fragments: bool = False
     recovery_ocr_layout_mode: str = "rectify_unfold_rows_v5"
@@ -138,11 +140,22 @@ class Settings:
         default_factory=lambda: DEFAULT_ALLOWED_MIME_TYPES
     )
     device: str = "cpu"
+    inference_api_key: str = field(default="", repr=False)
+    camera_public_host: str = ""
+    camera_public_port: int | None = None
+    camera_public_transport: str = "HTTP"
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
 
     def __post_init__(self) -> None:
         from app.ocr.layout import SUPPORTED_LAYOUTS
+
+        if self.camera_public_transport not in {"HTTP", "HTTPS"}:
+            raise ValueError("CAMERA_PUBLIC_TRANSPORT must be HTTP or HTTPS")
+        if not 1 <= self.port <= 65535:
+            raise ValueError("PORT must be between 1 and 65535")
+        if self.camera_public_port is not None and not 1 <= self.camera_public_port <= 65535:
+            raise ValueError("CAMERA_PUBLIC_PORT must be between 1 and 65535")
         if self.ocr_layout_mode not in SUPPORTED_LAYOUTS:
             raise ValueError(f"OCR_LAYOUT_MODE must be one of {SUPPORTED_LAYOUTS}")
         if not 0 < self.fallback_detection_conf <= 1:
@@ -153,8 +166,8 @@ class Settings:
             raise ValueError("RECOVERY_DETECTION_CONF must be between zero and one")
         if self.recovery_ocr_layout_mode not in SUPPORTED_LAYOUTS:
             raise ValueError("unsupported RECOVERY_OCR_LAYOUT_MODE")
-        if self.recovery_detector_model_path and not self.fallback_detector_model_path:
-            raise ValueError("RECOVERY_DETECTOR_PATH requires FALLBACK_DETECTOR_PATH")
+        if (self.recovery_detector_model_path or self.camera_recovery_detector_model_path) and not self.fallback_detector_model_path:
+            raise ValueError("recovery detector requires FALLBACK_DETECTOR_PATH")
         if self.detection_imgsz <= 0 or self.detection_imgsz % 32:
             raise ValueError("DETECTION_IMGSZ must be a positive multiple of 32")
         if not 0 < self.detection_nms_iou < 1:
@@ -172,6 +185,11 @@ class Settings:
             fallback_detector_model_path=_env("FALLBACK_DETECTOR_PATH", ""),
             fallback_detection_conf=_env_float("FALLBACK_DETECTION_CONF", .05),
             recovery_detector_model_path=_env("RECOVERY_DETECTOR_PATH", ""),
+            camera_recovery_detector_model_path=_env("CAMERA_RECOVERY_DETECTOR_PATH", ""),
+            camera_merge_fallback_fragments=(
+                _env_bool("CAMERA_MERGE_FALLBACK_FRAGMENTS", False)
+                if _env("CAMERA_MERGE_FALLBACK_FRAGMENTS", "") else None
+            ),
             recovery_detection_conf=_env_float("RECOVERY_DETECTION_CONF", .05),
             merge_fallback_fragments=_env_bool("FALLBACK_MERGE_FRAGMENTS", False),
             recovery_ocr_layout_mode=_env("RECOVERY_OCR_LAYOUT_MODE", "rectify_unfold_rows_v5"),
@@ -190,6 +208,10 @@ class Settings:
                 "ALLOWED_MIME_TYPES", DEFAULT_ALLOWED_MIME_TYPES
             ),
             device=_env("DEVICE", default_device()),
+            inference_api_key=_env("INFERENCE_API_KEY", ""),
+            camera_public_host=_env("CAMERA_PUBLIC_HOST", "").strip(),
+            camera_public_port=(int(value) if (value := _env("CAMERA_PUBLIC_PORT", "")) else None),
+            camera_public_transport=_env("CAMERA_PUBLIC_TRANSPORT", "HTTP").upper(),
             host=_env("HOST", DEFAULT_HOST),
             port=_env_int("PORT", DEFAULT_PORT),
         )
@@ -210,6 +232,12 @@ class Settings:
     @property
     def recovery_detector_path(self) -> Path | None:
         return resolve_path(self.recovery_detector_model_path) if self.recovery_detector_model_path else None
+
+    @property
+    def camera_recovery_detector_path(self) -> Path | None:
+        if self.camera_recovery_detector_model_path:
+            return resolve_path(self.camera_recovery_detector_model_path)
+        return self.recovery_detector_path
 
     @property
     def ocr_path(self) -> Path:

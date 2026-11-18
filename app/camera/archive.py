@@ -15,9 +15,9 @@ from uuid import uuid4
 from fastapi import HTTPException
 from PIL import Image, UnidentifiedImageError
 
-from app.api.config import ROOT
+from app.api.config import resolve_path
 
-ARCHIVE_DIR = ROOT / "data" / "processed" / "camera_inbox"
+ARCHIVE_DIR = resolve_path(os.getenv("CAMERA_ARCHIVE_DIR") or "data/processed/camera_inbox")
 _lock = threading.Lock()
 
 

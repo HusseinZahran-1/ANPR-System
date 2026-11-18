@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import io
 import tempfile
 import threading
+from functools import lru_cache
+from ipaddress import ip_address
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Security, UploadFile
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel, ConfigDict
 from PIL import Image, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
@@ -63,8 +69,13 @@ def _get_camera_pipeline() -> Pipeline:
     global _camera_pipeline
     settings = get_settings()
     detector_path = settings.camera_detector_path
-    if detector_path is None:
+    recovery_path = settings.camera_recovery_detector_path
+    merge = settings.camera_merge_fallback_fragments
+    if detector_path is None and recovery_path == settings.recovery_detector_path and merge is None:
         return _get_pipeline()
+    detector_path = detector_path or settings.detector_path
+    if merge is None:
+        merge = settings.merge_fallback_fragments
     if _camera_pipeline is None:
         with _pipeline_lock:
             if _camera_pipeline is None:
@@ -76,7 +87,7 @@ def _get_camera_pipeline() -> Pipeline:
                     raise FileNotFoundError('configured authority OCR model is missing')
                 if settings.fallback_detector_path is not None and not settings.fallback_detector_path.is_file():
                     raise FileNotFoundError('configured fallback detector model is missing')
-                if settings.recovery_detector_path is not None and not settings.recovery_detector_path.is_file():
+                if recovery_path is not None and not recovery_path.is_file():
                     raise FileNotFoundError('configured recovery detector model is missing')
                 _camera_pipeline = Pipeline(
                     detector_path=detector_path,
@@ -91,10 +102,10 @@ def _get_camera_pipeline() -> Pipeline:
                     authority_min_prefix_confidence=settings.authority_min_prefix_confidence,
                     fallback_detector_path=settings.fallback_detector_path,
                     fallback_det_conf=settings.fallback_detection_conf,
-                    recovery_detector_path=settings.recovery_detector_path,
+                    recovery_detector_path=recovery_path,
                     recovery_det_conf=settings.recovery_detection_conf,
                     recovery_layout_mode=settings.recovery_ocr_layout_mode,
-                    merge_fallback_fragments=settings.merge_fallback_fragments,
+                    merge_fallback_fragments=merge,
                 )
     return _camera_pipeline
 
@@ -116,7 +127,9 @@ def health() -> dict:
     authority_ok = settings.authority_path is None or settings.authority_path.is_file()
     fallback_ok = settings.fallback_detector_path is None or settings.fallback_detector_path.is_file()
     recovery_ok = settings.recovery_detector_path is None or settings.recovery_detector_path.is_file()
-    ready = detector_ok and camera_detector_ok and ocr_ok and authority_ok and fallback_ok and recovery_ok
+    camera_recovery = settings.camera_recovery_detector_path
+    camera_recovery_ok = camera_recovery is None or camera_recovery.is_file()
+    ready = detector_ok and camera_detector_ok and ocr_ok and authority_ok and fallback_ok and recovery_ok and camera_recovery_ok
     return {
         "status": "ready" if ready else "model_missing",
         "models_loaded": _pipeline is not None,
@@ -130,6 +143,8 @@ def health() -> dict:
         "fallback_detector_available": fallback_ok,
         "recovery_detector_enabled": settings.recovery_detector_path is not None,
         "recovery_detector_available": recovery_ok,
+        "camera_recovery_detector_enabled": camera_recovery is not None,
+        "camera_recovery_detector_available": camera_recovery_ok,
         "device": settings.device,
     }
 
@@ -186,3 +201,122 @@ async def predict(file: UploadFile = File(...)) -> dict:
 async def predict_demo(file: UploadFile = File(...)) -> dict:
     """Gate-camera demo inference using the configured camera detector, no archive."""
     return await analyze_upload(file,camera=True)
+
+
+
+class PlateParts(BaseModel):
+    full_text: str
+    plate_code: str | None
+    plate_number: str | None
+    split_basis: str
+    requires_human_review: bool
+
+
+class DetectionEvidence(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    box: tuple[float, float, float, float]
+    det_conf: float
+
+
+class ReadingEvidence(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    crop_box: tuple[float, float, float, float]
+    text: str
+    ocr_conf: float
+    plate_parts: PlateParts
+
+
+class InferenceResponse(BaseModel):
+    api_version: str
+    profile: str
+    checkpoints: dict[str, str]
+    image_path: str
+    detections: list[DetectionEvidence]
+    ocr_results: list[ReadingEvidence]
+    validations: list[dict]
+    decisions: list[dict]
+    meta: dict
+
+
+_inference_key_header = APIKeyHeader(name="X-Inference-Key", auto_error=False)
+
+
+def _authorize_inference(request: Request, key: str | None = Security(_inference_key_header)) -> None:
+    settings = get_settings()
+    if settings.inference_api_key:
+        if key and hmac.compare_digest(key.encode(), settings.inference_api_key.encode()):
+            return
+        raise HTTPException(status_code=401, detail="invalid inference API key")
+    try:
+        local = request.client is not None and ip_address(request.client.host).is_loopback
+        loopback_bind = ip_address(settings.host).is_loopback
+    except ValueError:
+        local = loopback_bind = False
+    if not local or not loopback_bind:
+        raise HTTPException(status_code=503, detail="inference API key required for network deployment")
+
+
+@lru_cache(maxsize=16)
+def _checkpoint_digest(path: Path) -> str:
+    with path.open("rb") as source:
+        return hashlib.file_digest(source, "sha256").hexdigest()
+
+
+def load_inference_profile() -> tuple[str, dict[str, str]]:
+    """Load the configured gate profile once per worker and identify its weights."""
+    settings = get_settings()
+    paths = {
+        "primary": settings.camera_detector_path or settings.detector_path,
+        "ocr": settings.ocr_path,
+        "fallback": settings.fallback_detector_path,
+        "recovery": settings.camera_recovery_detector_path,
+        "authority": settings.authority_path,
+    }
+    try:
+        checkpoints = {role: _checkpoint_digest(path) for role, path in paths.items()
+                       if path is not None}
+        _get_camera_pipeline()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="inference profile unavailable") from exc
+    return "gate-camera-v1", checkpoints
+
+
+@router.get("/v1/ready", tags=["inference-v1"], dependencies=[Depends(_authorize_inference)])
+def inference_ready() -> dict:
+    """Load and verify the versioned profile, returning 503 on initialization failure."""
+    profile, checkpoints = load_inference_profile()
+    return {"status": "ready", "api_version": "v1", "profile": profile, "checkpoints": checkpoints}
+
+
+@router.post(
+    "/v1/predict",
+    tags=["inference-v1"],
+    dependencies=[Depends(_authorize_inference)],
+    response_model=InferenceResponse,
+    responses={code: {"description": description} for code, description in {
+        401: "Invalid inference key",
+        413: "Image exceeds size or dimension limits",
+        415: "Unsupported image type",
+        422: "Missing or unreadable image",
+        500: "Inference failed",
+        503: "Profile unavailable or service key missing",
+    }.items()},
+)
+async def predict_v1(file: UploadFile = File(...)) -> dict:
+    """Analyze one scene with the gate camera profile without creating an event."""
+    try:
+        profile, checkpoints = await run_in_threadpool(load_inference_profile)
+        result = await analyze_upload(file, camera=True)
+    except HTTPException as exc:
+        if exc.status_code == 422 and str(exc.detail).startswith("could not process image:"):
+            raise HTTPException(status_code=422, detail="could not process image") from exc
+        raise
+    finally:
+        await file.close()
+    # Legacy responses carry local paths. The integration API publishes hashes instead.
+    meta = {key: value for key, value in result["meta"].items()
+            if key not in {"detector", "ocr", "fallback_detector", "recovery_detector"}}
+    return {**result, "meta": meta, "api_version": "v1", "profile": profile,
+            "checkpoints": checkpoints}

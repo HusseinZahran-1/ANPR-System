@@ -1,6 +1,7 @@
 param(
-    [string]$BindAddress = '127.0.0.1',
-    [ValidateRange(1,65535)][int]$Port = 8000
+    [string]$BindAddress,
+    [ValidateRange(1,65535)][int]$Port,
+    [switch]$RequireModels
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,7 +11,11 @@ if (-not (Test-Path -LiteralPath $anprPython -PathType Leaf)) {
 }
 Push-Location -LiteralPath $PSScriptRoot
 try {
-    & $anprPython -m uvicorn app.main:app --host $BindAddress --port $Port
+    $anprArguments = @()
+    if ($PSBoundParameters.ContainsKey('BindAddress')) { $anprArguments += @('--host', $BindAddress) }
+    if ($PSBoundParameters.ContainsKey('Port')) { $anprArguments += @('--port', $Port) }
+    if ($RequireModels) { $anprArguments += '--require-models' }
+    & $anprPython -m app.serve @anprArguments
     $anprExitCode = $LASTEXITCODE
 } finally {
     Pop-Location

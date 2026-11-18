@@ -95,3 +95,6 @@ logs/**/*.cache
 *.pfx
 credentials*.json
 service-account*.json
+
+# Preserved interpreter environments after relocation
+.venv-relocated-backup-*/

@@ -17,7 +17,7 @@ from email import policy
 from email.parser import BytesParser
 from pathlib import Path
 
-from fastapi import APIRouter, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Header, HTTPException, Request, Response, UploadFile
 from PIL import Image, UnidentifiedImageError
 from starlette.datastructures import Headers
 
@@ -143,7 +143,7 @@ def last_isapi2_packet(x_camera_key: str | None = Header(None)) -> dict:
 
 
 @router.get("/config")
-def isapi2_setup(x_camera_key: str | None = Header(None)) -> dict:
+def isapi2_setup(response: Response, x_camera_key: str | None = Header(None)) -> dict:
     """Give an authenticated operator the exact camera-side settings."""
     settings = get_settings()
     if not settings.camera_api_key or not x_camera_key or not hmac.compare_digest(
@@ -151,13 +151,17 @@ def isapi2_setup(x_camera_key: str | None = Header(None)) -> dict:
         raise HTTPException(status_code=401, detail="invalid camera API key")
     if not settings.camera_isapi_token:
         raise HTTPException(status_code=503, detail="CAMERA_ISAPI_TOKEN is not configured")
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
-            connection.connect(("192.0.2.1", 1))
-            host_ip = connection.getsockname()[0]
-    except OSError:
-        host_ip = ""
-    return {"version": "HTTP", "host_ip": host_ip, "host_port": settings.port,
+    host_ip = settings.camera_public_host or settings.host
+    if host_ip in {"0.0.0.0", "::"}:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
+                connection.connect(("192.0.2.1", 1))
+                host_ip = connection.getsockname()[0]
+        except OSError:
+            host_ip = ""
+    response.headers["Cache-Control"] = "no-store"
+    return {"version": settings.camera_public_transport, "host_ip": host_ip,
+            "host_port": settings.camera_public_port or settings.port,
             "host_url": "/camera/isapi2/" + settings.camera_isapi_token,
             "heartbeat_interval_s": 0, "uploaded_picture_type": "Detection Picture",
             "authentication_mode": "None", "platform_response_verification": False}

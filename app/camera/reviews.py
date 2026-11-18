@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import threading
 from datetime import datetime, timezone
@@ -13,9 +14,9 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from app.api.config import ROOT
+from app.api.config import resolve_path
 
-REVIEW_DIR = ROOT / "data/reviewed/live_feedback"
+REVIEW_DIR = resolve_path(os.getenv("CAMERA_REVIEW_DIR") or "data/reviewed/live_feedback")
 _write_lock = threading.Lock()
 PLACEHOLDER_TEXTS = {"NONE", "UNKNOWN", "UNREADABLE", "NOPLATE", "NA", "NULL"}
 
