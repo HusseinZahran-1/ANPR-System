@@ -10,3 +10,6 @@ pi-heif==1.4.0
 opencv-python==5.0.0.93
 matplotlib==3.10.6
 scipy==1.18.0
+
+# IANA zones for local export dates on Windows.
+tzdata==2026.6

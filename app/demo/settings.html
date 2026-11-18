@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jordan ANPR | Camera settings</title>
+  <link rel="stylesheet" href="/assets/workspace.css">
+  <script src="/assets/settings.js" defer></script>
+</head>
+<body>
+<main class="portal">
+  <nav class="portal-nav" aria-label="Main navigation">
+    <strong><a href="/">JORDAN ANPR</a></strong><a href="/demo">Image analysis</a>
+    <a href="/live">Live camera</a><a href="/api">API console</a>
+  </nav>
+  <header class="portal-header"><h1>Camera settings</h1></header>
+  <div class="panel-grid">
+    <section class="panel">
+      <h2>Operator access</h2>
+      <form id="unlock">
+        <label>Site administrator key<input id="admin-key" type="password" autocomplete="off" required></label>
+        <button type="submit">Load camera settings</button>
+      </form>
+      <p id="settings-status" role="status" aria-live="polite">Use SITE_ADMIN_KEY from the local service configuration.</p>
+      <section id="destination" hidden>
+        <h2>Active camera bridge URL</h2>
+        <output id="bridge-url"></output>
+      </section>
+      <p class="muted">Stable upload path <code>/camera/events</code></p>
+      <p class="muted">Upload authentication <code>X-Camera-Key</code></p>
+    </section>
+    <section class="panel" id="editable" hidden>
+      <h2>Camera destination</h2>
+      <p class="muted">Blank address settings use the deployment defaults. The advertised address must point to a working listener or proxy.</p>
+      <form id="save-settings">
+        <label>Public host<input id="public-host" placeholder="Receiver IP or DNS name"></label>
+        <label>Public port<input id="public-port" type="number" min="1" max="65535" placeholder="Deployment default"></label>
+        <label>Transport<select id="transport"><option value="">Deployment default</option><option>HTTP</option><option>HTTPS</option></select></label>
+        <label>Bridge alias<input id="bridge-alias" pattern="[a-z0-9][a-z0-9\-]{0,39}" maxlength="40" placeholder="front-gate"></label>
+        <p class="muted">An alias creates <code>/camera/bridge/&lt;alias&gt;</code>. The stable upload path remains available.</p>
+        <label>New camera API key (optional)<input id="new-camera-key" type="password" autocomplete="new-password" minlength="16" maxlength="128" pattern="[A-Za-z0-9_\-]{16,128}"></label>
+        <p class="muted">Use at least 16 letters, numbers, underscores or hyphens. Save a new key only when ready to update camera clients.</p>
+        <button type="submit">Save camera settings</button>
+      </form>
+    </section>
+  </div>
+</main>
+</body>
+</html>

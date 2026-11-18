@@ -43,7 +43,7 @@ def test_gate_adds_vehicle_evidence_without_changing_legacy_prediction(monkeypat
         def run(self, path, plates):
             raise RuntimeError("detector failed")
 
-    def detect(path, plates, detector, attributes, device):
+    def detect(path, plates, detector, attributes, device, **kwargs):
         from app.vehicle import vehicle_evidence
         assert detector == resolve_path("local/coco.pt")
         assert plates[0]["box"] == [20, 42, 40, 48]
@@ -74,3 +74,30 @@ def test_primary_vehicle_prefers_plate_then_largest_visible_vehicle():
     background.plate_indices = [0]
     assert select_primary_vehicle([background, vehicle]) is background
     assert select_primary_vehicle([]) is None
+
+
+def test_plate_without_a_vehicle_match_does_not_use_the_background():
+    from types import SimpleNamespace
+    from app.vehicle import VehicleAnalyzer
+
+    boxes = SimpleNamespace(xyxy=torch.tensor([[0, 0, 90, 90]]),
+                            cls=torch.tensor([2]), conf=torch.tensor([0.95]))
+    detection = SimpleNamespace(boxes=boxes, orig_shape=(400, 400))
+    analyzer = VehicleAnalyzer.__new__(VehicleAnalyzer)
+    analyzer.detector = SimpleNamespace(predict=lambda *args, **kwargs: [detection])
+    analyzer.attributes = None
+    analyzer.device = "cpu"
+    vehicles, status = analyzer.run(Path("unused.jpg"), [{"box": (190, 200, 220, 210)}])
+    assert vehicles == []
+    assert status == "unassociated"
+
+
+def test_supervised_color_requires_two_consistent_views():
+    import numpy as np
+    from app.vehicle_attributes import COLORS, _supported_color
+
+    scores = np.zeros((2, len(COLORS)), dtype=np.float32)
+    scores[:, COLORS.index("Black")] = [0.98, 0.96]
+    assert _supported_color(scores) == "Black"
+    scores[1, COLORS.index("White")] = 0.99
+    assert _supported_color(scores) is None

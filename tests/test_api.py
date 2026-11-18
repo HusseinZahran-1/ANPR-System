@@ -14,6 +14,7 @@ from app.main import app
 @pytest.fixture
 def api(monkeypatch, tmp_path):
     monkeypatch.setenv("ANPR_EXPORT_DIR", str(tmp_path / "exports"))
+    monkeypatch.setenv("CAMERA_SETTINGS_DB", str(tmp_path / "camera-settings.sqlite3"))
     detector, ocr = tmp_path / 'det.pt', tmp_path / 'ocr.pt'
     detector.touch()
     ocr.touch()
@@ -41,7 +42,7 @@ def test_health_does_not_load_models(api):
 
 def test_company_demo_serves_upload_interface(api):
     client, _ = api
-    assert client.get('/', follow_redirects=False).headers['location'] == '/demo'
+    assert 'Operations workspace' in client.get('/').text
     response = client.get('/demo')
     assert response.status_code == 200
     assert 'text/html' in response.headers['content-type']
@@ -387,20 +388,30 @@ def test_demo_saves_original_and_matching_xml(api, monkeypatch, tmp_path):
             }
 
     monkeypatch.setattr(routes, "_pipeline", StubPipeline())
+    vehicle = routes.Vehicle(
+        box=(0, 0, 15, 18), detection_class="car", det_conf=0.9,
+        vehicle_type="SUV", color="Black", make="Mercedes-Benz",
+    )
+    monkeypatch.setattr(routes, "vehicle_evidence", lambda *args, **kwargs: ([vehicle], "ready"))
     content = png_bytes()
     response = client.post("/demo/predict", files={"file": ("same.png", content, "image/png")})
     assert response.is_success
     saved = response.json()["export"]
-    directory = tmp_path / "exports" / saved["id"]
+    directory = tmp_path / "exports" / saved["folder"]
     image = directory / saved["image_filename"]
     xml = directory / saved["xml_filename"]
-    assert image.name == "ANPR_1200345.png"
-    assert xml.name == "ANPR_1200345.xml"
+    assert image.name == "ANPR_1200345_Black_Mercedes-Benz_Car.png"
+    assert xml.name == "ANPR_1200345_Black_Mercedes-Benz_Car.xml"
     assert image.read_bytes() == content
     root = ElementTree.parse(xml).getroot()
     assert root.find("image").attrib["filename"] == image.name
     assert root.findtext("./plates/plate/plate_number") == "00345"
     assert root.findtext("source") == "upload"
+    assert root.find("export").get("folder") == saved["folder"]
+    assert root.findtext("./vehicles/vehicle/vehicle_type") == "Car"
+    assert root.find("./vehicles/vehicle/vehicle_category") is None
+    assert root.findtext("./vehicles/vehicle/color") == "Black"
+    assert root.findtext("./vehicles/vehicle/make") == "Mercedes-Benz"
     assert set(directory.iterdir()) == {image, xml}
 
 
@@ -436,6 +447,116 @@ def test_export_without_a_plate_uses_anpr_and_capture_id(monkeypatch, tmp_path):
 
     monkeypatch.setenv("ANPR_EXPORT_DIR", str(tmp_path))
     result = save_export(png_bytes(), ".png", {"ocr_results": []}, source="upload")
-    base = f"ANPR_{result['id']}"
+    base = f"ANPR_{result['id']}_Unknown_Unknown_Unknown"
     assert result["image_filename"] == base + ".png"
     assert result["xml_filename"] == base + ".xml"
+
+
+def test_exports_share_the_amman_date_folder_without_overwriting(monkeypatch, tmp_path):
+    from datetime import datetime, timezone
+    from app import capture_exports
+
+    class FixedTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 18, 22, 15, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(capture_exports, "datetime", FixedTime)
+    monkeypatch.setenv("ANPR_EXPORT_DIR", str(tmp_path))
+    result = {"ocr_results": [{"text": "1200345"}]}
+    first = capture_exports.save_export(b"first", ".jpg", result, source="camera")
+    second = capture_exports.save_export(b"second", ".png", result, source="upload")
+    assert first["folder"] == second["folder"] == "2026-11-19"
+    folder = tmp_path / first["folder"]
+    assert (folder / first["image_filename"]).read_bytes() == b"first"
+    assert (folder / second["image_filename"]).read_bytes() == b"second"
+    assert first["xml_filename"] != second["xml_filename"]
+    assert len(list(folder.iterdir())) == 4
+
+
+def test_camera_settings_persist_alias_and_replace_camera_key(api, monkeypatch):
+    from app.camera import routes as camera_routes
+    from app.camera import settings as camera_settings
+
+    client, settings = api
+    settings.site_admin_key = "site-admin-test"
+    settings.camera_api_key = "original-camera-key"
+    monkeypatch.setattr(camera_settings, "get_settings", lambda: settings)
+    monkeypatch.setattr(camera_routes, "get_settings", lambda: settings)
+    monkeypatch.setattr(camera_routes, "recent_records", lambda limit: [])
+    admin = {"X-Site-Admin-Key": settings.site_admin_key}
+    initial_headers = {"X-Camera-Key": settings.camera_api_key}
+    assert client.get("/settings").is_success
+    assert client.get("/ops/camera-settings").status_code == 401
+    assert client.get("/camera/bridge/config", headers=initial_headers).json()["bridge_path"] == "/camera/events"
+    new_key = "changed-camera-test-credential"
+    response = client.put("/ops/camera-settings", headers=admin,
+                          json={"public_host": "receiver.example.test", "public_port": 8443,
+                                "transport": "HTTPS", "bridge_alias": "front-gate",
+                                "camera_key": new_key})
+    assert response.is_success
+    assert new_key not in response.text
+    saved = client.get("/ops/camera-settings", headers=admin).json()
+    assert saved["canonical_path"] == "/camera/events"
+    assert saved["effective"]["bridge_url"] == "https://receiver.example.test:8443/camera/bridge/front-gate"
+    assert client.get("/camera/events", headers=initial_headers).status_code == 401
+    assert client.get("/camera/events", headers={"X-Camera-Key": new_key}).is_success
+    assert new_key.encode() not in camera_settings._path().read_bytes()
+
+
+def test_remembered_viewer_is_scoped_and_ends_after_camera_key_rotation(api, monkeypatch):
+    from app.camera import routes as camera_routes
+    from app.camera import settings as camera_settings
+
+    client, settings = api
+    settings.site_admin_key = "site-admin-test"
+    settings.camera_api_key = "camera-viewer-test-secret"
+    monkeypatch.setattr(camera_routes, "get_settings", lambda: settings)
+    monkeypatch.setattr(camera_settings, "get_settings", lambda: settings)
+    monkeypatch.setattr(camera_routes, "recent_records", lambda limit: [])
+    viewer = {"X-Camera-Viewer": "1"}
+    camera = {"X-Camera-Key": settings.camera_api_key}
+    admin = {"X-Site-Admin-Key": settings.site_admin_key}
+
+    assert not client.get("/camera/viewer/session", headers=viewer).json()["connected"]
+    assert client.post("/camera/viewer/session", headers=viewer).status_code == 401
+    signed_in = client.post("/camera/viewer/session", headers=camera)
+    assert signed_in.status_code == 204
+    cookie = signed_in.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=strict" in cookie
+    assert settings.camera_api_key.lower() not in cookie
+    assert client.get("/camera/viewer/session", headers=viewer).json()["connected"]
+    assert client.get("/camera/events", headers=viewer).is_success
+    assert client.get("/camera/events").status_code == 401
+    assert client.post("/camera/events", headers=viewer,
+                       files={"file": ("x.png", png_bytes(), "image/png")}).status_code == 401
+
+    assert client.delete("/camera/viewer/session", headers=viewer).status_code == 204
+    assert not client.get("/camera/viewer/session", headers=viewer).json()["connected"]
+    assert client.post("/camera/viewer/session", headers=camera).status_code == 204
+    assert client.put("/ops/camera-settings", headers=admin,
+                      json={"camera_key": "rotated-camera-key-test"}).is_success
+    assert not client.get("/camera/viewer/session", headers=viewer).json()["connected"]
+    assert client.get("/camera/events", headers=viewer).status_code == 401
+
+
+def test_camera_auto_connect_is_limited_to_direct_local_listener():
+    from fastapi import Request
+    from app.camera.viewer import is_local_viewer
+
+    settings = Settings(camera_auto_connect_local=True)
+
+    def request(peer, host="10.10.0.10", forwarded=False):
+        headers = [(b"host", host.encode())]
+        if forwarded:
+            headers.append((b"x-forwarded-for", b"10.10.0.20"))
+        return Request({
+            "type": "http", "scheme": "http", "path": "/camera/viewer/session",
+            "server": ("10.10.0.10", 8000), "client": (peer, 49152), "headers": headers,
+        })
+
+    assert is_local_viewer(request("10.10.0.10"), settings)
+    assert not is_local_viewer(request("10.10.0.20"), settings)
+    assert not is_local_viewer(request("10.10.0.10", forwarded=True), settings)
+    assert not is_local_viewer(request("10.10.0.10", host="public.example"), settings)
+    assert not is_local_viewer(request("10.10.0.10"), Settings())

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jordan ANPR | Operations workspace</title>
+  <link rel="stylesheet" href="/assets/workspace.css">
+</head>
+<body>
+<main class="portal">
+  <nav class="portal-nav" aria-label="Main navigation">
+    <strong>JORDAN ANPR</strong><a href="/demo">Image analysis</a><a href="/live">Live camera</a>
+    <a href="/api">API console</a><a href="/settings">Settings</a>
+  </nav>
+  <header class="portal-header">
+    <h1>Operations workspace</h1>
+    <p id="service-status" role="status">Checking recognition service…</p>
+  </header>
+  <section class="panel camera-endpoint-card">
+    <h2>Camera API</h2>
+    <label>Fixed upload URL<input id="fixed-camera-url" value="/camera/events" readonly></label>
+    <p class="muted">Authentication header <code>X-Camera-Key</code> · <a href="/settings">Edit camera settings</a></p>
+  </section>
+  <div class="panel-grid">
+    <section class="panel"><h2><a href="/demo">Image analysis</a></h2>
+      <p class="muted">Upload a scene and review the plate, vehicle and saved XML report.</p></section>
+    <section class="panel"><h2><a href="/live">Live camera</a></h2>
+      <p class="muted">Open the latest captures, inspect images and record human reviews.</p></section>
+    <section class="panel"><h2><a href="/api">API console</a></h2>
+      <p class="muted">Issue inference keys and test an integration with a JPEG or PNG.</p></section>
+    <section class="panel"><h2><a href="/settings">Camera settings</a></h2>
+      <p class="muted">Manage the camera destination, bridge alias and upload key.</p></section>
+  </div>
+</main>
+<script>
+document.getElementById('fixed-camera-url').value = new URL('/camera/events', location.href).href;
+const statusText = document.getElementById('service-status');
+fetch('/health', {cache: 'no-store'}).then(async response => {
+  const data = await response.json();
+  if (!response.ok || data.status !== 'ready') {
+    statusText.className = 'status-bad';
+    statusText.textContent = 'Recognition models need attention.';
+    return;
+  }
+  statusText.className = 'status-good';
+  statusText.textContent = `Recognition service ready · ${String(data.device).toUpperCase()}`;
+}).catch(() => {
+  statusText.className = 'status-bad';
+  statusText.textContent = 'Could not reach the recognition service.';
+});
+</script>
+</body>
+</html>

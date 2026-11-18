@@ -129,6 +129,7 @@ class Settings:
     authority_model_path: str = ""
     vehicle_detector_model_path: str = ""
     vehicle_attribute_model_path: str = ""
+    vehicle_structured_model_path: str = ""
     authority_min_prefix_confidence: float = .8
     detection_conf: float = DEFAULT_DETECTION_CONF
     detection_imgsz: int = DEFAULT_DETECTION_IMGSZ
@@ -144,6 +145,8 @@ class Settings:
     device: str = "cpu"
     inference_api_key: str = field(default="", repr=False)
     inference_admin_key: str = field(default="", repr=False)
+    site_admin_key: str = field(default="", repr=False)
+    camera_auto_connect_local: bool = False
     camera_public_host: str = ""
     camera_public_port: int | None = None
     camera_public_transport: str = "HTTP"
@@ -199,6 +202,7 @@ class Settings:
             ocr_model_path=_env("MODEL_OCR_PATH", DEFAULT_OCR_PATH),
             vehicle_detector_model_path=_env("VEHICLE_DETECTOR_PATH", ""),
             vehicle_attribute_model_path=_env("VEHICLE_ATTRIBUTE_PATH", ""),
+            vehicle_structured_model_path=_env("VEHICLE_STRUCTURED_ATTRIBUTE_PATH", ""),
             authority_model_path=_env('AUTHORITY_REGION_MODEL_PATH',''),
             authority_min_prefix_confidence=_env_float('AUTHORITY_PREFIX_MIN_CONF',.8),
             detection_conf=_env_float("DETECTION_CONF", DEFAULT_DETECTION_CONF),
@@ -215,6 +219,8 @@ class Settings:
             device=_env("DEVICE", default_device()),
             inference_api_key=_env("INFERENCE_API_KEY", ""),
             inference_admin_key=_env("INFERENCE_ADMIN_KEY", ""),
+            site_admin_key=_env("SITE_ADMIN_KEY", ""),
+            camera_auto_connect_local=_env_bool("CAMERA_AUTO_CONNECT_LOCAL", False),
             camera_public_host=_env("CAMERA_PUBLIC_HOST", "").strip(),
             camera_public_port=(int(value) if (value := _env("CAMERA_PUBLIC_PORT", "")) else None),
             camera_public_transport=_env("CAMERA_PUBLIC_TRANSPORT", "HTTP").upper(),
@@ -256,6 +262,10 @@ class Settings:
     @property
     def vehicle_attribute_path(self) -> Path | None:
         return resolve_path(self.vehicle_attribute_model_path) if self.vehicle_attribute_model_path else None
+
+    @property
+    def vehicle_structured_path(self) -> Path | None:
+        return resolve_path(self.vehicle_structured_model_path) if self.vehicle_structured_model_path else None
 
     @property
     def authority_path(self) -> Path | None:
