@@ -13,6 +13,7 @@ from app.api.routes import analyze_upload
 from app.camera.archive import complete_capture, recent_records, save_capture, stored_capture
 from app.camera.events import events
 from app.camera.reviews import ReviewPayload, save_review
+from app.validator.plate_parts import split_plate_text
 
 router = APIRouter(prefix="/camera", tags=["camera"])
 
@@ -69,8 +70,19 @@ def list_camera_events(limit: int = 10, x_camera_key: str | None = Header(None))
             "camera_id": record["camera_id"], "filename": record["original_filename"],
             "result": record["result"],
         }
-    return {"events": sorted(visible.values(), key=lambda item: item["captured_at"],
-                             reverse=True)[:limit]}
+    latest = sorted(visible.values(), key=lambda item: item["captured_at"], reverse=True)[:limit]
+    for index, event in enumerate(latest):
+        result = event["result"]
+        readings = result.get("ocr_results", [])
+        if any(reading.get("plate_parts") is None for reading in readings):
+            # Derive the display fields from the saved OCR without editing the archive.
+            readings = [
+                {**reading, "plate_parts": split_plate_text(reading.get("text", ""))}
+                if reading.get("plate_parts") is None else reading
+                for reading in readings
+            ]
+            latest[index] = {**event, "result": {**result, "ocr_results": readings}}
+    return {"events": latest}
 
 
 @router.get("/events/{event_id}/image")

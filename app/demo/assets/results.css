@@ -45,3 +45,5 @@
 .vehicle-results h3 { margin: 0 0 8px; font-size: 16px; color: var(--text); }
 .vehicle-card + .vehicle-card { margin-top: 12px; }
 .vehicle-note { color: var(--muted); font-size: 12px; }
+
+.plate-split-note { margin: 0 0 12px; color: var(--muted); font-size: 12px; }

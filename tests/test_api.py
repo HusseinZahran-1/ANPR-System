@@ -345,3 +345,27 @@ def test_gate_recovery_options_do_not_change_general_profile(api, monkeypatch, t
     assert options[0]["merge_fallback_fragments"] is False
     assert options[1]["recovery_detector_path"] == recovery
     assert options[1]["merge_fallback_fragments"] is True
+
+
+def test_camera_listing_supplies_missing_plate_parts_without_editing_archive(api, monkeypatch):
+    from app.camera import routes as camera_routes
+
+    client, settings = api
+    settings.camera_api_key = "history-test-key"
+    monkeypatch.setattr(camera_routes, "get_settings", lambda: settings)
+    old_readings = [{"text": "1200345"}, {"text": "100345"}]
+    record = {
+        "event_id": "archived-event", "captured_at": "2026-11-18T08:00:00+00:00",
+        "camera_id": "gate-test", "original_filename": "capture.jpg",
+        "result": {"ocr_results": old_readings},
+    }
+    monkeypatch.setattr(camera_routes.events, "list", lambda limit: [])
+    monkeypatch.setattr(camera_routes, "recent_records", lambda limit: [record])
+    response = client.get("/camera/events", headers={"X-Camera-Key": settings.camera_api_key})
+    assert response.status_code == 200
+    resolved, ambiguous = response.json()["events"][0]["result"]["ocr_results"]
+    assert resolved["plate_parts"]["plate_code"] == "12"
+    assert resolved["plate_parts"]["plate_number"] == "00345"
+    assert ambiguous["plate_parts"]["plate_code"] is None
+    assert ambiguous["plate_parts"]["plate_number"] is None
+    assert old_readings == [{"text": "1200345"}, {"text": "100345"}]

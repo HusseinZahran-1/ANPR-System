@@ -19,11 +19,21 @@
 
   function plateFields(ocr) {
     const parts = ocr?.plate_parts;
-    return fields([
-      ['Full plate reading', parts?.full_text || ocr?.text || 'Unreadable', 'full-plate'],
-      ['Registration code', parts?.plate_code ?? 'Unresolved', 'plate-part'],
-      ['Plate number', parts?.plate_number ?? 'Unresolved', 'plate-part'],
-    ]);
+    const full = parts?.full_text || ocr?.text || '';
+    const ambiguous = !parts?.plate_code && !parts?.plate_number && /^[0-9]{6}$/.test(full);
+    const awaitingReview = ambiguous ? 'Needs review' : 'Unresolved';
+    const result = element('div');
+    result.append(fields([
+      ['Full plate reading', full || 'Unreadable', 'full-plate'],
+      ['Registration code', parts?.plate_code ?? awaitingReview, 'plate-part'],
+      ['Plate number', parts?.plate_number ?? awaitingReview, 'plate-part'],
+    ]));
+    if (ambiguous) {
+      const options = [1, 2].map(cut => `${full.slice(0, cut)} + ${full.slice(cut)}`);
+      result.append(element('p', `Possible code + number: ${options.join(' or ')}. Check the plate image.`,
+                            'plate-split-note'));
+    }
+    return result;
   }
 
   function vehicleSection(result) {
